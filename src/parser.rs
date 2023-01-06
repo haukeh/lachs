@@ -1,9 +1,20 @@
 use std::iter::{self, Peekable};
+use thiserror::Error;
 
 use crate::{
     ast::Expr,
     scanner::{LiteralValue, Token, TokenType},
 };
+
+#[derive(Error, Debug)]
+pub enum ParserError {
+    #[error("Unexpected Token {0:?}")]
+    UnexpectedToken(Token),
+    #[error("Unexpected end of token stream")]
+    UnexpectedEOF,
+    #[error("Expected token not found: {0}")]
+    ExpectedTokenNotFound(String)
+}
 
 struct TokenIter {
     tokens: Vec<Token>,
@@ -21,114 +32,124 @@ impl Iterator for TokenIter {
 }
 
 pub struct Parser {
-    tokens: Peekable<TokenIter>,
+    tokens: Peekable<TokenIter>
 }
 
 impl Parser {
-    fn new(tokens: Vec<Token>) -> Self {
+    pub fn new(tokens: Vec<Token>) -> Self {
         Self {
             tokens: TokenIter { tokens }.peekable(),
         }
     }
 
-    fn expression(&mut self) -> Expr {
+    pub fn parse(&mut self) -> Result<Expr, ParserError> {
+        self.expression()
+    }
+
+    fn expression(&mut self) -> Result<Expr, ParserError> {
         self.equality()
     }
 
-    fn equality(&mut self) -> Expr {
-        let mut expr = self.comparison();
+    fn equality(&mut self) -> Result<Expr, ParserError> {
+        let mut expr = self.comparison()?;
         while let Some(op) = self.matches_one(vec![TokenType::Bang, TokenType::BangEqual]) {
-            let right = Box::new(self.comparison());
+            let right = Box::new(self.comparison()?);
             expr = Expr::Binary {
                 left: Box::new(expr),
                 op,
                 right,
             }
         }
-        expr
+        Ok(expr)
     }
 
-    fn comparison(&mut self) -> Expr {
-        let mut expr = self.term();
+    fn comparison(&mut self) -> Result<Expr, ParserError> {
+        let mut expr = self.term()?;
         while let Some(op) = self.matches_one(vec![
             TokenType::Greater,
             TokenType::GreaterEqual,
             TokenType::Less,
             TokenType::LessEqual,
         ]) {
-            let right = Box::new(self.term());
+            let right = Box::new(self.term()?);
             expr = Expr::Binary {
                 left: Box::new(expr),
                 op,
                 right,
             }
         }
-        expr
+        Ok(expr)
     }
 
-    fn term(&mut self) -> Expr {
-        let mut expr = self.factor();
+    fn term(&mut self) -> Result<Expr, ParserError> {
+        let mut expr = self.factor()?;
         while let Some(op) = self.matches_one(vec![TokenType::Minus, TokenType::Plus]) {
-            let right = Box::new(self.factor());
+            let right = Box::new(self.factor()?);
             expr = Expr::Binary {
                 left: Box::new(expr),
                 op,
                 right,
             }
         }
-        expr
+        Ok(expr)
     }
 
-    fn factor(&mut self) -> Expr {
-        let mut expr = self.unary();
+    fn factor(&mut self) -> Result<Expr, ParserError> {
+        let mut expr = self.unary()?;
         while let Some(op) = self.matches_one(vec![TokenType::Slash, TokenType::Star]) {
-            let right = Box::new(self.unary());
+            let right = Box::new(self.unary()?);
             expr = Expr::Binary {
                 left: Box::new(expr),
                 op,
                 right,
             }
         }
-        expr
+        Ok(expr)
     }
 
-    fn unary(&mut self) -> Expr {
+    fn unary(&mut self) -> Result<Expr, ParserError> {
         if let Some(op) = self.matches_one(vec![TokenType::Bang, TokenType::Minus]) {
-            let right = Box::new(self.unary());
-            return Expr::Unary { op, right };
+            let right = Box::new(self.unary()?);
+            return Ok(Expr::Unary { op, right });
         }
         self.primary()
     }
 
-    fn primary(&mut self) -> Expr {
+    fn primary(&mut self) -> Result<Expr, ParserError> {
         if let Some(_) = self.matches(TokenType::False) {
-            return Expr::Literal(LiteralValue::False);
+            return Ok(Expr::Literal(LiteralValue::False));
         }
         if let Some(_) = self.matches(TokenType::True) {
-            return Expr::Literal(LiteralValue::True);
+            return Ok(Expr::Literal(LiteralValue::True));
         }
         if let Some(_) = self.matches(TokenType::Nil) {
-            return Expr::Literal(LiteralValue::Nil);
+            return Ok(Expr::Literal(LiteralValue::Nil));
         }
         if let Some(tok) = self.matches_one(vec![TokenType::Number, TokenType::String]) {
-            return Expr::Literal(tok.literal.expect("expected Number or String literal"));
+            return Ok(Expr::Literal(
+                tok.literal.expect("expected Number or String literal"),
+            ));
         }
         if let Some(_) = self.matches(TokenType::LeftParen) {
-            let expr = self.expression();
-            self.consume(TokenType::RightParen, "Expect ')' after expression.");
-            return Expr::Grouping {
+            let expr = self.expression()?;
+            let _ = self.consume(TokenType::RightParen, "Expect ')' after expression.")?;
+            return Ok(Expr::Grouping {
                 expr: Box::new(expr),
-            };
+            });
         }
 
-        panic!("todo: errors");
+        match self.tokens.next() {
+            Some(tok) => Err(ParserError::UnexpectedToken(tok)),
+            None => Err(ParserError::UnexpectedEOF),
+        }
     }
 
-    fn consume(&mut self, tt: TokenType, err: &str) {
+    fn consume(&mut self, tt: TokenType, err: &str) -> Result<Token, ParserError> {
         if self.peek_for(tt) {
-            let s = self.tokens.next();
-        }
-        panic!("todo: errors {}", err);
+            Ok(self.tokens.next().unwrap())
+        } else {
+            Err(ParserError::ExpectedTokenNotFound(err.to_string()) )
+        } 
     }
 
     fn matches(&mut self, t: TokenType) -> Option<Token> {
@@ -169,8 +190,7 @@ impl Parser {
                     | TokenType::Return => {
                         return;
                     }
-                    _ => { // ignore}
-                    }
+                    _ => {} // ignore
                 }
             }
         }
@@ -179,13 +199,20 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
+    use crate::ast::AstPrinter;
+
     use super::*;
 
     #[test]
     fn test_parser() {
         let mut p = Parser::new(vec![
-            Token::new(TokenType::Comma, ",".to_string(), None, 1),
-            Token::new(TokenType::Dot, ".".to_string(), None, 1),
+            Token::new(TokenType::Number, "14".to_string(), Some(LiteralValue::Number(14f64)), 1),
+            Token::new(TokenType::Plus, "+".to_string(), None, 1),
+            Token::new(TokenType::Number, "6".to_string(), Some(LiteralValue::Number(6f64)), 1),
         ]);
+
+        let res = p.parse().unwrap();
+        
+        assert_eq!("(+ 14 6)", AstPrinter::new().string(&res));
     }
 }

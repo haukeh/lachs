@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
 use phf::phf_map;
+use thiserror::Error;
+
+use crate::parser::ParserError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
@@ -78,7 +81,7 @@ pub struct Token {
     pub typ: TokenType,
     pub lexeme: String,
     pub literal: Option<LiteralValue>,
-    line: usize,
+    pub line: usize,
 }
 
 impl Token {
@@ -111,6 +114,21 @@ static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map! {
     "while" => TokenType::While,
 };
 
+
+#[derive(Error, Debug)]
+pub enum ScannerError {
+    #[error("[Line {0}] Invalid character: {1}")]
+    InvalidChar(usize, char),
+    #[error("[Line {0}] Invalid number literal: {1}")]
+    InvalidNumberLiteral(usize, String),
+    #[error("[Line {0}] Unexpected end of String literal")]
+    UnterminatedString(usize),
+    #[error("Scanner failed")]
+    ScannerFailed    
+}
+
+type ScannerResult = Result<(), ScannerError>;
+
 pub struct Scanner {
     source: Vec<u8>,
     tokens: Vec<Token>,
@@ -130,20 +148,29 @@ impl Scanner {
         }
     }
 
-    pub fn scan_tokens(&mut self) -> &Vec<Token> {
+    pub fn scan_tokens(mut self) -> Result<Vec<Token>, ScannerError> {
+        let mut had_error = false;
+
         while !self.is_at_end() {
             self.start = self.current;
-            self.scan_token();
+            if let Err(e) = self.scan_token() {                
+                println!("{e}");
+                had_error = true;
+            }
         }
 
-        self.tokens.push(Token {
-            typ: TokenType::Eof,
-            lexeme: "".to_string(),
-            literal: None,
-            line: self.line,
-        });
-
-        return &self.tokens;
+        if had_error { 
+            Err(ScannerError::ScannerFailed)
+        } else {
+            self.tokens.push(Token {
+                typ: TokenType::Eof,
+                lexeme: "".to_string(),
+                literal: None,
+                line: self.line,
+            });
+    
+            return Ok(self.tokens);
+        }
     }
 
     fn is_at_end(&self) -> bool {
@@ -169,11 +196,11 @@ impl Scanner {
         return true;
     }
 
-    fn add_token(&mut self, tt: TokenType) {
-        self.add_token_literal(tt, None);
+    fn add_token(&mut self, tt: TokenType) -> ScannerResult {
+        self.add_token_literal(tt, None)
     }
 
-    fn add_conditional_token(&mut self, expected: u8, then: TokenType, otherwise: TokenType) {
+    fn add_conditional_token(&mut self, expected: u8, then: TokenType, otherwise: TokenType) -> ScannerResult {
         let token = if self.matches(expected) {
             then
         } else {
@@ -182,7 +209,7 @@ impl Scanner {
         self.add_token(token)
     }
 
-    fn add_token_literal(&mut self, tt: TokenType, literal: Option<LiteralValue>) {
+    fn add_token_literal(&mut self, tt: TokenType, literal: Option<LiteralValue>) -> ScannerResult {
         let lexeme = &self.source[self.start..self.current];
         let lexeme = String::from_utf8_lossy(lexeme).to_string();
 
@@ -192,6 +219,7 @@ impl Scanner {
             literal,
             line: self.line,
         });
+        Ok(())
     }
 
     fn peek(&self) -> u8 {
@@ -208,7 +236,7 @@ impl Scanner {
         return self.source[self.current + 1];
     }
 
-    fn string(&mut self) {
+    fn string(&mut self) -> ScannerResult {
         while self.peek() != b'"' && !self.is_at_end() {
             if self.peek() == b'\n' {
                 self.line += 1;
@@ -217,7 +245,7 @@ impl Scanner {
         }
 
         if self.is_at_end() {
-            // TODO: error
+            return Err(ScannerError::UnterminatedString(self.line))
         }
 
         self.advance();
@@ -227,7 +255,7 @@ impl Scanner {
         self.add_token_literal(TokenType::String, Some(LiteralValue::String(string)))
     }
 
-    fn number(&mut self) {
+    fn number(&mut self) -> ScannerResult {
         while self.peek().is_ascii_digit() {
             self.advance();
         }
@@ -240,13 +268,13 @@ impl Scanner {
         let s = String::from_utf8_lossy(&self.source[self.start..self.current]);
         match s.parse::<f64>() {
             Ok(num) => {
-                self.add_token_literal(TokenType::Number, Some(LiteralValue::Number(num)));
+                self.add_token_literal(TokenType::Number, Some(LiteralValue::Number(num)))
             }
-            Err(_) => todo!("error"),
+            Err(_) => Err(ScannerError::InvalidNumberLiteral(self.line, s.to_string())),
         }
     }
 
-    fn identifier(&mut self) {
+    fn identifier(&mut self) -> ScannerResult {
         while Scanner::is_valid_character(self.peek()) {
             self.advance();
         }
@@ -258,15 +286,16 @@ impl Scanner {
             .unwrap_or(TokenType::Identifier);
 
         self.add_token(token_type);
+        
+        Ok(())
     }
 
     fn is_valid_character(c: u8) -> bool {
         c.is_ascii_alphabetic() || c == b'_'
     }
 
-    fn scan_token(&mut self) {
+    fn scan_token(&mut self) -> ScannerResult {
         let c = self.advance();
-
         match c {
             b'(' => self.add_token(TokenType::LeftParen),
             b')' => self.add_token(TokenType::RightParen),
@@ -288,19 +317,25 @@ impl Scanner {
                         self.advance();
                     }
                 } else {
-                    self.add_token(TokenType::Slash);
+                    self.add_token(TokenType::Slash)?
                 }
+                Ok(())
             }
-            b' ' | b'\r' | b'\t' => {}
-            b'\n' => self.line += 1,
+            b' ' | b'\r' | b'\t' => {
+                Ok(())
+            }
+            b'\n' =>{
+                self.line += 1;
+                Ok(())
+            },
             b'"' => self.string(),
             _ => {
                 if c.is_ascii_digit() {
-                    self.number();
+                    self.number()
                 } else if Scanner::is_valid_character(c) {
-                    self.identifier();
+                    self.identifier()
                 } else {
-                    todo!("error impl");
+                    Err(ScannerError::InvalidChar(self.line, c as char))
                 }
             }
         }
