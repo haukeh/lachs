@@ -1,8 +1,9 @@
 use std::{env, fs, io, process::exit, error::Error};
 
+use ast::Interpreter;
 use scanner::Scanner;
 
-use crate::{ast::AstPrinter, parser::Parser};
+use crate::parser::Parser;
 
 mod ast;
 mod parser;
@@ -15,14 +16,19 @@ fn main() {
         println!("Usage: lachs [script]");
         exit(64)
     } else if args.len() == 2 {
-        run_file(args.first().unwrap())
+        if let Err(e) = run_file(&args[1]) {
+            println!("[ERROR] {e}");
+            exit(70)
+        }
     } else {
         run_prompt();
     }
+    exit(0)
 }
 
-fn run_file(path: &str) {
-    let _ = fs::read_to_string(path);
+fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
+    let source = fs::read_to_string(path)?;
+    run(source)
 }
 
 fn run_prompt() {
@@ -42,7 +48,8 @@ fn run(line: String) -> Result<(), Box<dyn Error>> {
     let scanner = Scanner::new(line);
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
-    let expr = parser.parse()?;
-    AstPrinter::new().print(&expr);
+    let stmts = parser.parse()?;
+    let interpreter = Interpreter::new();
+    interpreter.interpret(&stmts);
     Ok(())
 }

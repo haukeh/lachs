@@ -1,9 +1,7 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::{self, Add}};
 
 use phf::phf_map;
 use thiserror::Error;
-
-use crate::parser::ParserError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
@@ -55,14 +53,71 @@ pub enum TokenType {
     Eof,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum LiteralValue {
     Number(f64),
     String(String),
     True,
     False,
-    Nil
+    Nil,
 }
+
+impl LiteralValue {
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            LiteralValue::False => false,
+            LiteralValue::Nil => false,
+            _ => true,
+        }
+    }
+}
+
+impl Into<f64> for &LiteralValue {
+    fn into(self) -> f64 {
+        match self {
+            &LiteralValue::Number(num) => num,
+            _ => panic!("Not a LiteralValue::Number")
+        }
+    }
+}
+
+impl Into<String> for LiteralValue {
+    fn into(self) -> String {
+        match self {
+            LiteralValue::String(s) => s,
+            _ => panic!("Not a LiteralValue::String")
+        }
+    }
+}
+
+impl Add<&LiteralValue> for &LiteralValue {
+    type Output = LiteralValue;
+
+    fn add(self, rhs: &LiteralValue) -> LiteralValue {
+        if let (LiteralValue::String(lhs), LiteralValue::String(rhs)) = (self, rhs) {
+            return LiteralValue::String(format!("{}{}", lhs,  rhs))
+        }
+        if let (LiteralValue::Number(lhs), LiteralValue::Number(rhs)) = (self, rhs) {
+            return LiteralValue::Number(lhs + rhs)
+        }
+        panic!("cannot add operand types {} and {}", self, rhs)
+    }
+}
+
+// impl PartialOrd for LiteralValue {
+//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+//         todo!()
+//     }
+// }
+
+// impl Ord for LiteralValue {
+//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+//         if let (LiteralValue::Number(lhs), LiteralValue::Number(rhs)) = (self, other) {
+//             return lhs.total_cmp(rhs)
+//         }
+//         todo!()        
+//     }
+// }
 
 impl Display for LiteralValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -114,7 +169,6 @@ static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map! {
     "while" => TokenType::While,
 };
 
-
 #[derive(Error, Debug)]
 pub enum ScannerError {
     #[error("[Line {0}] Invalid character: {1}")]
@@ -124,7 +178,7 @@ pub enum ScannerError {
     #[error("[Line {0}] Unexpected end of String literal")]
     UnterminatedString(usize),
     #[error("Scanner failed")]
-    ScannerFailed    
+    ScannerFailed,
 }
 
 type ScannerResult = Result<(), ScannerError>;
@@ -153,13 +207,13 @@ impl Scanner {
 
         while !self.is_at_end() {
             self.start = self.current;
-            if let Err(e) = self.scan_token() {                
+            if let Err(e) = self.scan_token() {
                 println!("{e}");
                 had_error = true;
             }
         }
 
-        if had_error { 
+        if had_error {
             Err(ScannerError::ScannerFailed)
         } else {
             self.tokens.push(Token {
@@ -168,7 +222,7 @@ impl Scanner {
                 literal: None,
                 line: self.line,
             });
-    
+
             return Ok(self.tokens);
         }
     }
@@ -200,7 +254,12 @@ impl Scanner {
         self.add_token_literal(tt, None)
     }
 
-    fn add_conditional_token(&mut self, expected: u8, then: TokenType, otherwise: TokenType) -> ScannerResult {
+    fn add_conditional_token(
+        &mut self,
+        expected: u8,
+        then: TokenType,
+        otherwise: TokenType,
+    ) -> ScannerResult {
         let token = if self.matches(expected) {
             then
         } else {
@@ -245,7 +304,7 @@ impl Scanner {
         }
 
         if self.is_at_end() {
-            return Err(ScannerError::UnterminatedString(self.line))
+            return Err(ScannerError::UnterminatedString(self.line));
         }
 
         self.advance();
@@ -267,9 +326,7 @@ impl Scanner {
         }
         let s = String::from_utf8_lossy(&self.source[self.start..self.current]);
         match s.parse::<f64>() {
-            Ok(num) => {
-                self.add_token_literal(TokenType::Number, Some(LiteralValue::Number(num)))
-            }
+            Ok(num) => self.add_token_literal(TokenType::Number, Some(LiteralValue::Number(num))),
             Err(_) => Err(ScannerError::InvalidNumberLiteral(self.line, s.to_string())),
         }
     }
@@ -286,7 +343,7 @@ impl Scanner {
             .unwrap_or(TokenType::Identifier);
 
         self.add_token(token_type);
-        
+
         Ok(())
     }
 
@@ -321,13 +378,11 @@ impl Scanner {
                 }
                 Ok(())
             }
-            b' ' | b'\r' | b'\t' => {
-                Ok(())
-            }
-            b'\n' =>{
+            b' ' | b'\r' | b'\t' => Ok(()),
+            b'\n' => {
                 self.line += 1;
                 Ok(())
-            },
+            }
             b'"' => self.string(),
             _ => {
                 if c.is_ascii_digit() {

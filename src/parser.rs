@@ -1,8 +1,8 @@
-use std::iter::{self, Peekable};
+use std::{iter::{self, Peekable}, os::macos::raw::stat};
 use thiserror::Error;
 
 use crate::{
-    ast::Expr,
+    ast::{Expr, Stmt},
     scanner::{LiteralValue, Token, TokenType},
 };
 
@@ -42,8 +42,58 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Expr, ParserError> {
-        self.expression()
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, ParserError> {
+        let mut stmts = Vec::new();
+        while !self.at_end() {
+            let s = self.statement()?;
+            stmts.push(s)
+        }
+        Ok(stmts)
+    }
+
+    fn declaration(&mut self) -> Result<Stmt, ParserError> { 
+        let res = if let Some(_) = self.matches(TokenType::Var) {
+            self.var_decl()
+        } else {
+            self.statement()
+        };
+        match res {
+            ok @ Ok(_) => ok,
+            err @ Err(_) => {
+                self.synchronize();
+                err
+            },
+        }
+    }
+
+    fn var_decl(&mut self) -> Result<Stmt, ParserError> {
+        let name = self.consume(TokenType::Identifier, "Expected variable name.")?;
+        let mut initializer: Expr = Expr::Literal(LiteralValue::Nil);
+        if let Some(_) = self.matches(TokenType::Equal) {
+            initializer = self.expression()?;
+        }
+        self.consume(TokenType::Semicolon, "Expected ';' after variable declaration.")?;
+        
+        Ok(Stmt::Var(name, initializer))
+    }
+
+    fn statement(&mut self) -> Result<Stmt, ParserError> {
+        if let Some(_) = self.matches(TokenType::Print) {
+            return self.print_stmt()
+        } 
+        return self.expression_stmt()        
+    }
+
+    fn print_stmt(&mut self) -> Result<Stmt, ParserError> {
+        let value = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expected ';' after value.")?;
+        Ok(Stmt::Print(value))
+    }
+
+    fn expression_stmt(&mut self) -> Result<Stmt, ParserError> {
+        let expr = self.expression()?;
+        self.consume(TokenType::Semicolon, "Expected ';' after expression.")?;
+        Ok(Stmt::Expression(expr))
     }
 
     fn expression(&mut self) -> Result<Expr, ParserError> {
@@ -52,7 +102,7 @@ impl Parser {
 
     fn equality(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.comparison()?;
-        while let Some(op) = self.matches_one(vec![TokenType::Bang, TokenType::BangEqual]) {
+        while let Some(op) = self.matches_one(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
             let right = Box::new(self.comparison()?);
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -117,18 +167,21 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Expr, ParserError> {
         if let Some(_) = self.matches(TokenType::False) {
-            return Ok(Expr::Literal(LiteralValue::False));
+            return Ok(Expr::Literal(LiteralValue::False))
         }
         if let Some(_) = self.matches(TokenType::True) {
-            return Ok(Expr::Literal(LiteralValue::True));
+            return Ok(Expr::Literal(LiteralValue::True))
         }
         if let Some(_) = self.matches(TokenType::Nil) {
-            return Ok(Expr::Literal(LiteralValue::Nil));
+            return Ok(Expr::Literal(LiteralValue::Nil))
         }
         if let Some(tok) = self.matches_one(vec![TokenType::Number, TokenType::String]) {
             return Ok(Expr::Literal(
                 tok.literal.expect("expected Number or String literal"),
-            ));
+            ))
+        }
+        if let Some(identifier) = self.matches(TokenType::Identifier) {
+            return Ok(Expr::Variable(identifier))
         }
         if let Some(_) = self.matches(TokenType::LeftParen) {
             let expr = self.expression()?;
