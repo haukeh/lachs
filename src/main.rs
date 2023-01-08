@@ -1,6 +1,6 @@
 use std::{env, fs, io, process::exit, error::Error};
 
-use ast::Interpreter;
+use ast::{Interpreter, Stmt};
 use scanner::Scanner;
 
 use crate::parser::Parser;
@@ -28,28 +28,30 @@ fn main() {
 
 fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
     let source = fs::read_to_string(path)?;
-    run(source)
+    let stmts = parse(source)?;
+    let mut interpreter = Interpreter::new();
+    interpreter.interpret(&stmts);    
+    Ok(())
 }
 
 fn run_prompt() {
     println!("> welcome to lachs");
+    let mut interpreter = Interpreter::new();    
     loop {        
-        let mut line = String::new();
+        let mut stmt = String::new();
         io::stdin()
-            .read_line(&mut line)
+            .read_line(&mut stmt)
             .expect("Failed to read line");
-        if let Err(e) = run(line) {
-            println!("[ERROR] {e}");
-        }
+        match parse(stmt) {
+            Ok(stmt) => interpreter.interpret(&stmt),
+            Err(e) => println!("[ERROR] {e}"),
+        }       
     }
 }
 
-fn run(line: String) -> Result<(), Box<dyn Error>> {
-    let scanner = Scanner::new(line);
+fn parse(source: String) -> Result<Vec<Stmt>, Box<dyn Error>> {
+    let scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
-    let stmts = parser.parse()?;
-    let interpreter = Interpreter::new();
-    interpreter.interpret(&stmts);
-    Ok(())
+    Ok(parser.parse()?)
 }

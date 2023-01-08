@@ -72,10 +72,10 @@ impl LiteralValue {
     }
 }
 
-impl Into<f64> for &LiteralValue {
+impl Into<f64> for LiteralValue {
     fn into(self) -> f64 {
         match self {
-            &LiteralValue::Number(num) => num,
+            LiteralValue::Number(num) => num,
             _ => panic!("Not a LiteralValue::Number")
         }
     }
@@ -90,14 +90,14 @@ impl Into<String> for LiteralValue {
     }
 }
 
-impl Add<&LiteralValue> for &LiteralValue {
+impl Add<LiteralValue> for LiteralValue {
     type Output = LiteralValue;
 
-    fn add(self, rhs: &LiteralValue) -> LiteralValue {
-        if let (LiteralValue::String(lhs), LiteralValue::String(rhs)) = (self, rhs) {
+    fn add(self, rhs: LiteralValue) -> LiteralValue {
+        if let (LiteralValue::String(lhs), LiteralValue::String(rhs)) = (&self, &rhs) {
             return LiteralValue::String(format!("{}{}", lhs,  rhs))
         }
-        if let (LiteralValue::Number(lhs), LiteralValue::Number(rhs)) = (self, rhs) {
+        if let (LiteralValue::Number(lhs), LiteralValue::Number(rhs)) = (&self, &rhs) {
             return LiteralValue::Number(lhs + rhs)
         }
         panic!("cannot add operand types {} and {}", self, rhs)

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops::Deref};
+use std::collections::HashMap;
 
 use crate::scanner::{LiteralValue, Token, TokenType};
 
@@ -21,19 +21,21 @@ pub enum Expr {
 }
 
 pub enum Stmt {
-    Expression(Expr), 
+    Expression(Expr),
     Print(Expr),
-    Var(Token, Expr),
+    Var {
+        name: Token,
+        initializer: Option<Expr>,
+    },
 }
 
-pub trait ExpressionVisitor<T: Clone> {
-    fn visit_expr<'a>(&self, e: &'a Expr) -> Cow<'a, T>;    
+pub trait ExpressionVisitor<T> {
+    fn visit_expr<'a>(&self, e: &'a Expr) -> T;
 }
 
 pub trait StatementVisitor<T> {
-    fn visit_stmt(&self, e: &Stmt) -> T;
+    fn visit_stmt(&mut self, e: &Stmt) -> T;
 }
-    
 
 pub struct AstPrinter {}
 
@@ -46,17 +48,17 @@ impl AstPrinter {
         println!("{}", self.visit_expr(expr));
     }
 
-    pub fn string<'a>(&mut self, expr: &'a Expr) -> String {
-        self.visit_expr(expr).into_owned()
+    pub fn string(&mut self, expr: &Expr) -> String {
+        self.visit_expr(expr)
     }
 }
 
 impl ExpressionVisitor<String> for AstPrinter {
-    fn visit_expr<'a>(&self, e: &'a Expr) -> Cow<'a, String> {
+    fn visit_expr<'a>(&self, e: &'a Expr) -> String {
         match e {
             Expr::Unary { op, right } => {
                 let res = self.visit_expr(right);
-                Cow::Owned(format!("({} {})", op.lexeme, res))
+                format!("({} {})", op.lexeme, res)
             }
             Expr::Binary {
                 ref left,
@@ -65,25 +67,53 @@ impl ExpressionVisitor<String> for AstPrinter {
             } => {
                 let lhs = self.visit_expr(left);
                 let rhs = self.visit_expr(right);
-                Cow::Owned(format!("({} {} {})", op.lexeme, lhs, rhs))
+                format!("({} {} {})", op.lexeme, lhs, rhs)
             }
             Expr::Grouping { expr } => {
                 let res = self.visit_expr(expr);
-                Cow::Owned(format!("(group {})", res))
+                format!("(group {})", res)
             }
-            Expr::Literal(value) => Cow::Owned(format!("{}", value)),
+            Expr::Literal(value) => format!("{}", value),
+            Expr::Variable(var) => {
+                let value = var.literal.as_ref().unwrap_or(&LiteralValue::Nil);
+                format!("var {} = {}", var.lexeme, value)
+            }
         }
     }
 }
-pub struct Interpreter {}
 
-impl Interpreter {
+struct Environment {
+    values: HashMap<String, LiteralValue>,
+}
 
+impl Environment {
     pub fn new() -> Self {
-        Interpreter {}
+        Environment {
+            values: HashMap::new(),
+        }
     }
 
-    pub fn interpret(&self, program: &Vec<Stmt>) {
+    pub fn define(&mut self, name: String, val: LiteralValue) {
+        self.values.insert(name, val);
+    }
+
+    pub fn get(&self, name: &str) -> &LiteralValue {
+        self.values.get(name).expect(&format!("Undefined variable {}", name))
+    }
+}
+
+pub struct Interpreter {
+    env: Environment,
+}
+
+impl Interpreter {
+    pub fn new() -> Self {
+        Interpreter {
+            env: Environment::new(),
+        }
+    }
+
+    pub fn interpret(&mut self, program: &Vec<Stmt>) {
         for stmt in program {
             self.visit_stmt(stmt);
         }
@@ -91,37 +121,44 @@ impl Interpreter {
 }
 
 impl StatementVisitor<()> for Interpreter {
-    fn visit_stmt(&self, e: &Stmt) -> () {
+    fn visit_stmt(&mut self, e: &Stmt) -> () {
         match e {
             Stmt::Expression(expr) => {
                 let _ = self.visit_expr(expr);
-            },
+            }
             Stmt::Print(expr) => {
                 let val = self.visit_expr(expr);
                 println!("{val}");
-            },
-            Stmt::Var(_, _) => todo!(),
+            }
+            Stmt::Var { name, initializer } => {
+                let init = if let Some(value) = initializer {
+                    self.visit_expr(value)
+                } else {
+                    LiteralValue::Nil
+                };
+
+                self.env.define(name.lexeme.clone(), init.clone());
+            }
         }
     }
 }
 
 impl ExpressionVisitor<LiteralValue> for Interpreter {
-    fn visit_expr<'a>(&self, e: &'a Expr) -> Cow<'a, LiteralValue> {
-        match e {
+    fn visit_expr(&self, expr: &Expr) -> LiteralValue {
+        match expr {
             Expr::Unary { op, right } => {
                 let right = self.visit_expr(right);
                 match op.typ {
                     TokenType::Bang => {
-                        let b = if right.is_truthy() {
+                        if right.is_truthy() {
                             LiteralValue::False
                         } else {
                             LiteralValue::True
-                        };
-                        Cow::Owned(b)
+                        }
                     }
                     TokenType::Minus => {
-                        if let LiteralValue::Number(num) = *right {
-                            return Cow::Owned(LiteralValue::Number(-num));
+                        if let LiteralValue::Number(num) = right {
+                            return LiteralValue::Number(-num);
                         }
                         panic!("minus only works for number")
                     }
@@ -131,73 +168,74 @@ impl ExpressionVisitor<LiteralValue> for Interpreter {
             Expr::Binary { left, op, right } => {
                 let left = self.visit_expr(left);
                 let right = self.visit_expr(right);
-                
+
                 match op.typ {
                     TokenType::Minus => {
-                        let lhs: f64 = left.deref().into();
-                        let rhs: f64 = right.deref().into();
-                        Cow::Owned(LiteralValue::Number(lhs - rhs))
-                    },
+                        let lhs: f64 = left.into();
+                        let rhs: f64 = right.into();
+                        LiteralValue::Number(lhs - rhs)
+                    }
                     TokenType::Slash => {
-                        let lhs: f64 = left.deref().into();
-                        let rhs: f64 = right.deref().into();
-                        Cow::Owned(LiteralValue::Number(lhs / rhs))
-                    },
+                        let lhs: f64 = left.into();
+                        let rhs: f64 = right.into();
+                        LiteralValue::Number(lhs / rhs)
+                    }
                     TokenType::Star => {
-                        let lhs: f64 = left.deref().into();
-                        let rhs: f64 = right.deref().into();
-                        Cow::Owned(LiteralValue::Number(lhs * rhs))
-                    },
-                    TokenType::Plus => {
-                        Cow::Owned(left.deref() + right.deref())
-                    },
+                        let lhs: f64 = left.into();
+                        let rhs: f64 = right.into();
+                        LiteralValue::Number(lhs * rhs)
+                    }
+                    TokenType::Plus => left + right,
                     TokenType::Greater => {
-                        if left.deref() > right.deref() { 
-                            Cow::Owned(LiteralValue::True)
+                        if left > right {
+                            LiteralValue::True
                         } else {
-                            Cow::Owned(LiteralValue::False)
+                            LiteralValue::False
                         }
-                    },
+                    }
                     TokenType::GreaterEqual => {
-                        if left.deref() >= right.deref() { 
-                            Cow::Owned(LiteralValue::True)
+                        if left >= right {
+                            LiteralValue::True
                         } else {
-                            Cow::Owned(LiteralValue::False)
+                            LiteralValue::False
                         }
-                    },
+                    }
                     TokenType::Less => {
-                        if left.deref() < right.deref() { 
-                            Cow::Owned(LiteralValue::True)
+                        if left < right {
+                            LiteralValue::True
                         } else {
-                            Cow::Owned(LiteralValue::False)
+                            LiteralValue::False
                         }
-                    },
+                    }
                     TokenType::LessEqual => {
-                        if left.deref() <= right.deref() { 
-                            Cow::Owned(LiteralValue::True)
+                        if left <= right {
+                            LiteralValue::True
                         } else {
-                            Cow::Owned(LiteralValue::False)
+                            LiteralValue::False
                         }
-                    },
+                    }
                     TokenType::BangEqual => {
-                        if left.deref() != right.deref() { 
-                            Cow::Owned(LiteralValue::True)
+                        if left != right {
+                            LiteralValue::True
                         } else {
-                            Cow::Owned(LiteralValue::False)
+                            LiteralValue::False
                         }
-                    },
+                    }
                     TokenType::EqualEqual => {
-                        if left.deref() == right.deref() { 
-                            Cow::Owned(LiteralValue::True)
+                        if left == right {
+                            LiteralValue::True
                         } else {
-                            Cow::Owned(LiteralValue::False)
+                            LiteralValue::False
                         }
-                    },
-                    _ => panic!("wrong token type")
+                    }
+                    _ => panic!("wrong token type"),
                 }
-            },
+            }
             Expr::Grouping { expr } => self.visit_expr(expr),
-            Expr::Literal(lit) => Cow::Borrowed(lit),
+            Expr::Literal(lit) => lit.clone(),
+            Expr::Variable(var) => {
+                self.env.get(&var.lexeme).clone()
+            }
         }
     }
 }
