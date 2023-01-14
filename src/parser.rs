@@ -96,7 +96,7 @@ impl Parser {
         while !self.peek_for(TokenType::RightBrace) && !self.at_end() {
             stmts.push(self.declaration()?)
         }
-        self.consume(TokenType::RightBrace, "Expect '}' after block");
+        self.consume(TokenType::RightBrace, "Expect '}' after block")?;
 
         Ok(stmts)
     }

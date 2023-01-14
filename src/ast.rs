@@ -2,10 +2,6 @@ use std::{collections::HashMap, rc::Rc, cell::RefCell};
 
 use crate::scanner::{LiteralValue, Token};
 
-pub trait TokenHolder<'a> {
-    fn token(&'a self) -> Option<&'a Token>;
-}
-
 #[derive(Debug)]
 pub enum Expr {
     Unary {
@@ -26,19 +22,6 @@ pub enum Expr {
     },
     Literal(LiteralValue),
     Variable(Token),
-}
-
-impl Expr {
-    pub fn token(&self) -> Option<&Token> {
-        match self {
-            Expr::Unary { op, .. } => Some(op),
-            Expr::Binary { op, .. } => Some(op),
-            Expr::Assign { name, .. } => Some(name),
-            Expr::Grouping { expr } => expr.token(),
-            Expr::Literal(_) => None,
-            Expr::Variable(t) => Some(t),
-        }
-    }
 }
 
 pub enum Stmt {

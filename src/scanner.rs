@@ -1,4 +1,4 @@
-use std::{fmt::Display, ops::{Add}};
+use std::{fmt::Display, ops::Add};
 
 use phf::phf_map;
 use thiserror::Error;
@@ -76,7 +76,7 @@ impl Into<f64> for LiteralValue {
     fn into(self) -> f64 {
         match self {
             LiteralValue::Number(num) => num,
-            _ => panic!("Not a LiteralValue::Number")
+            _ => panic!("Not a LiteralValue::Number"),
         }
     }
 }
@@ -85,7 +85,7 @@ impl Into<String> for LiteralValue {
     fn into(self) -> String {
         match self {
             LiteralValue::String(s) => s,
-            _ => panic!("Not a LiteralValue::String")
+            _ => panic!("Not a LiteralValue::String"),
         }
     }
 }
@@ -95,29 +95,14 @@ impl Add<LiteralValue> for LiteralValue {
 
     fn add(self, rhs: LiteralValue) -> LiteralValue {
         if let (LiteralValue::String(lhs), LiteralValue::String(rhs)) = (&self, &rhs) {
-            return LiteralValue::String(format!("{}{}", lhs,  rhs))
+            return LiteralValue::String(format!("{}{}", lhs, rhs));
         }
         if let (LiteralValue::Number(lhs), LiteralValue::Number(rhs)) = (&self, &rhs) {
-            return LiteralValue::Number(lhs + rhs)
+            return LiteralValue::Number(lhs + rhs);
         }
         panic!("cannot add operand types {} and {}", self, rhs)
     }
 }
-
-// impl PartialOrd for LiteralValue {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         todo!()
-//     }
-// }
-
-// impl Ord for LiteralValue {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         if let (LiteralValue::Number(lhs), LiteralValue::Number(rhs)) = (self, other) {
-//             return lhs.total_cmp(rhs)
-//         }
-//         todo!()        
-//     }
-// }
 
 impl Display for LiteralValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -216,12 +201,8 @@ impl Scanner {
         if had_error {
             Err(ScannerError::ScannerFailed)
         } else {
-            self.tokens.push(Token {
-                typ: TokenType::Eof,
-                lexeme: "".to_string(),
-                literal: None,
-                line: self.line,
-            });
+            self.tokens
+                .push(Token::new(TokenType::Eof, "".to_string(), None, self.line));
 
             return Ok(self.tokens);
         }
@@ -272,12 +253,7 @@ impl Scanner {
         let lexeme = &self.source[self.start..self.current];
         let lexeme = String::from_utf8_lossy(lexeme).to_string();
 
-        self.tokens.push(Token {
-            typ: tt,
-            lexeme,
-            literal,
-            line: self.line,
-        });
+        self.tokens.push(Token::new(tt, lexeme, literal, self.line));
         Ok(())
     }
 
@@ -342,7 +318,7 @@ impl Scanner {
             .cloned()
             .unwrap_or(TokenType::Identifier);
 
-        self.add_token(token_type);
+        self.add_token(token_type)?;
 
         Ok(())
     }
