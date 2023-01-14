@@ -2,7 +2,7 @@ use std::iter::{self, Peekable};
 use thiserror::Error;
 
 use crate::{
-    ast::{Expr, Stmt},
+    ast::{Expr, Stmt, TokenHolder},
     scanner::{LiteralValue, Token, TokenType},
 };
 
@@ -77,14 +77,28 @@ impl Parser {
             "Expected ';' after variable declaration.",
         )?;
 
-        Ok(Stmt::Var { name, initializer })
+        Ok(Stmt::Var(name, initializer))
     }
 
     fn statement(&mut self) -> Result<Stmt, ParserError> {
         if let Some(_) = self.matches(TokenType::Print) {
             return self.print_stmt();
         }
+        if let Some(_) = self.matches(TokenType::LeftBrace) {
+            return Ok(Stmt::Block(self.block()?))
+        }
         return self.expression_stmt();
+    }
+
+    fn block(&mut self) -> Result<Vec<Stmt>, ParserError> {
+        let mut stmts = Vec::new();
+
+        while !self.peek_for(TokenType::RightBrace) && !self.at_end() {
+            stmts.push(self.declaration()?)
+        }
+        self.consume(TokenType::RightBrace, "Expect '}' after block");
+
+        Ok(stmts)
     }
 
     fn print_stmt(&mut self) -> Result<Stmt, ParserError> {
@@ -100,7 +114,23 @@ impl Parser {
     }
 
     fn expression(&mut self) -> Result<Expr, ParserError> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr, ParserError> {
+        let expr = self.equality()?;
+        
+        if let Some(equals) = self.matches(TokenType::Equal) {
+            let value = self.assignment()?;
+            
+            if let Expr::Variable(name) = &expr {
+                return Ok(Expr::Assign { name: name.clone(), value: Box::new(value), });
+            }
+
+            return Err(ParserError::UnexpectedToken(equals))
+        }
+        
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expr, ParserError> {

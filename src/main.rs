@@ -1,6 +1,7 @@
 use std::{env, fs, io, process::exit, error::Error};
 
-use ast::{Interpreter, Stmt};
+use ast::Stmt;
+use interpreter::Interpreter;
 use scanner::Scanner;
 
 use crate::parser::Parser;
@@ -8,6 +9,7 @@ use crate::parser::Parser;
 mod ast;
 mod parser;
 mod scanner;
+mod interpreter;
 
 fn main() {
     let args: Vec<String> = env::args().collect();

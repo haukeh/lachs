@@ -1,6 +1,10 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc, cell::RefCell};
 
 use crate::scanner::{LiteralValue, Token, TokenType};
+
+pub trait TokenHolder<'a> {
+    fn token(&'a self) -> Option<&'a Token>;
+}
 
 #[derive(Debug)]
 pub enum Expr {
@@ -13,6 +17,10 @@ pub enum Expr {
         op: Token,
         right: Box<Expr>,
     },
+    Assign {
+        name: Token,
+        value: Box<Expr>,
+    },
     Grouping {
         expr: Box<Expr>,
     },
@@ -20,76 +28,44 @@ pub enum Expr {
     Variable(Token),
 }
 
-pub enum Stmt {
-    Expression(Expr),
-    Print(Expr),
-    Var {
-        name: Token,
-        initializer: Option<Expr>,
-    },
-}
-
-pub trait ExpressionVisitor<T> {
-    fn visit_expr<'a>(&self, e: &'a Expr) -> T;
-}
-
-pub trait StatementVisitor<T> {
-    fn visit_stmt(&mut self, e: &Stmt) -> T;
-}
-
-pub struct AstPrinter {}
-
-impl AstPrinter {
-    pub fn new() -> Self {
-        AstPrinter {}
-    }
-
-    pub fn print(&mut self, expr: &Expr) {
-        println!("{}", self.visit_expr(expr));
-    }
-
-    pub fn string(&mut self, expr: &Expr) -> String {
-        self.visit_expr(expr)
-    }
-}
-
-impl ExpressionVisitor<String> for AstPrinter {
-    fn visit_expr<'a>(&self, e: &'a Expr) -> String {
-        match e {
-            Expr::Unary { op, right } => {
-                let res = self.visit_expr(right);
-                format!("({} {})", op.lexeme, res)
-            }
-            Expr::Binary {
-                ref left,
-                ref op,
-                ref right,
-            } => {
-                let lhs = self.visit_expr(left);
-                let rhs = self.visit_expr(right);
-                format!("({} {} {})", op.lexeme, lhs, rhs)
-            }
-            Expr::Grouping { expr } => {
-                let res = self.visit_expr(expr);
-                format!("(group {})", res)
-            }
-            Expr::Literal(value) => format!("{}", value),
-            Expr::Variable(var) => {
-                let value = var.literal.as_ref().unwrap_or(&LiteralValue::Nil);
-                format!("var {} = {}", var.lexeme, value)
-            }
+impl Expr {
+    pub fn token(&self) -> Option<&Token> {
+        match self {
+            Expr::Unary { op, .. } => Some(op),
+            Expr::Binary { op, .. } => Some(op),
+            Expr::Assign { name, .. } => Some(name),
+            Expr::Grouping { expr } => expr.token(),
+            Expr::Literal(_) => None,
+            Expr::Variable(t) => Some(t),
         }
     }
 }
 
-struct Environment {
+pub enum Stmt {
+    Expression(Expr),
+    Print(Expr),
+    Var(Token, Option<Expr>),
+    Block(Vec<Stmt>)
+}
+
+#[derive(Debug)]
+pub struct Environment {
     values: HashMap<String, LiteralValue>,
+    enclosing: Option<Rc<RefCell<Environment>>>
 }
 
 impl Environment {
     pub fn new() -> Self {
         Environment {
             values: HashMap::new(),
+            enclosing: None
+        }
+    }
+
+    pub fn with_enclosing(enc: Rc<RefCell<Environment>>) -> Self {
+        Environment {
+            values: HashMap::new(),
+            enclosing: Some(enc),         
         }
     }
 
@@ -97,153 +73,47 @@ impl Environment {
         self.values.insert(name, val);
     }
 
-    pub fn get(&self, name: &str) -> &LiteralValue {
-        self.values.get(name).expect(&format!("Undefined variable {}", name))
+    pub fn assign(&mut self, name: &Token, val: LiteralValue) {
+        if let Some(local) = self.values.get_mut(&name.lexeme) {
+            *local = val;
+        } else if let Some(parent_env) = self.enclosing.as_ref() {                
+            parent_env.borrow_mut().assign(name, val);
+        }           
+        
+        panic!("Assign to undefined variable {}", name.lexeme)        
     }
-}
 
-pub struct Interpreter {
-    env: Environment,
-}
-
-impl Interpreter {
-    pub fn new() -> Self {
-        Interpreter {
-            env: Environment::new(),
+    pub fn get(&self, name: &str) -> LiteralValue {
+        if let Some(local) = self.values.get(name) {
+            return local.clone()
         }
-    }
 
-    pub fn interpret(&mut self, program: &Vec<Stmt>) {
-        for stmt in program {
-            self.visit_stmt(stmt);
+        if let Some(parent_env) = self.enclosing.as_ref() {
+            let p = parent_env.borrow();
+            return p.get(name)
         }
+        
+        panic!("Undefined variable {}", name);       
     }
 }
 
-impl StatementVisitor<()> for Interpreter {
-    fn visit_stmt(&mut self, e: &Stmt) -> () {
-        match e {
-            Stmt::Expression(expr) => {
-                let _ = self.visit_expr(expr);
-            }
-            Stmt::Print(expr) => {
-                let val = self.visit_expr(expr);
-                println!("{val}");
-            }
-            Stmt::Var { name, initializer } => {
-                let init = if let Some(value) = initializer {
-                    self.visit_expr(value)
-                } else {
-                    LiteralValue::Nil
-                };
-
-                self.env.define(name.lexeme.clone(), init.clone());
-            }
-        }
+impl Default for Environment {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-impl ExpressionVisitor<LiteralValue> for Interpreter {
-    fn visit_expr(&self, expr: &Expr) -> LiteralValue {
-        match expr {
-            Expr::Unary { op, right } => {
-                let right = self.visit_expr(right);
-                match op.typ {
-                    TokenType::Bang => {
-                        if right.is_truthy() {
-                            LiteralValue::False
-                        } else {
-                            LiteralValue::True
-                        }
-                    }
-                    TokenType::Minus => {
-                        if let LiteralValue::Number(num) = right {
-                            return LiteralValue::Number(-num);
-                        }
-                        panic!("minus only works for number")
-                    }
-                    _ => panic!("wrong token type"),
-                }
-            }
-            Expr::Binary { left, op, right } => {
-                let left = self.visit_expr(left);
-                let right = self.visit_expr(right);
-
-                match op.typ {
-                    TokenType::Minus => {
-                        let lhs: f64 = left.into();
-                        let rhs: f64 = right.into();
-                        LiteralValue::Number(lhs - rhs)
-                    }
-                    TokenType::Slash => {
-                        let lhs: f64 = left.into();
-                        let rhs: f64 = right.into();
-                        LiteralValue::Number(lhs / rhs)
-                    }
-                    TokenType::Star => {
-                        let lhs: f64 = left.into();
-                        let rhs: f64 = right.into();
-                        LiteralValue::Number(lhs * rhs)
-                    }
-                    TokenType::Plus => left + right,
-                    TokenType::Greater => {
-                        if left > right {
-                            LiteralValue::True
-                        } else {
-                            LiteralValue::False
-                        }
-                    }
-                    TokenType::GreaterEqual => {
-                        if left >= right {
-                            LiteralValue::True
-                        } else {
-                            LiteralValue::False
-                        }
-                    }
-                    TokenType::Less => {
-                        if left < right {
-                            LiteralValue::True
-                        } else {
-                            LiteralValue::False
-                        }
-                    }
-                    TokenType::LessEqual => {
-                        if left <= right {
-                            LiteralValue::True
-                        } else {
-                            LiteralValue::False
-                        }
-                    }
-                    TokenType::BangEqual => {
-                        if left != right {
-                            LiteralValue::True
-                        } else {
-                            LiteralValue::False
-                        }
-                    }
-                    TokenType::EqualEqual => {
-                        if left == right {
-                            LiteralValue::True
-                        } else {
-                            LiteralValue::False
-                        }
-                    }
-                    _ => panic!("wrong token type"),
-                }
-            }
-            Expr::Grouping { expr } => self.visit_expr(expr),
-            Expr::Literal(lit) => lit.clone(),
-            Expr::Variable(var) => {
-                self.env.get(&var.lexeme).clone()
-            }
-        }
-    }
+pub trait ExpressionVisitor<T> {
+    fn visit_expr<'a>(&mut self, e: &'a Expr, env: Rc<RefCell<Environment>>) -> T;
 }
+
+pub trait StatementVisitor<T> {
+    fn visit_stmt(&mut self, e: &Stmt, env: Rc<RefCell<Environment>>) -> T;
+}
+
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Deref;
-
     use crate::scanner::TokenType;
 
     use super::*;
