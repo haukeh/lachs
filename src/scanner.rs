@@ -64,28 +64,27 @@ pub enum LiteralValue {
 
 impl LiteralValue {
     pub fn is_truthy(&self) -> bool {
-        match self {
-            LiteralValue::False => false,
-            LiteralValue::Nil => false,
-            _ => true,
-        }
+        !matches!(self, LiteralValue::False | LiteralValue::Nil)
     }
 }
 
-impl Into<f64> for LiteralValue {
-    fn into(self) -> f64 {
-        match self {
-            LiteralValue::Number(num) => num,
-            _ => panic!("Not a LiteralValue::Number"),
+impl From<LiteralValue> for f64 {
+    fn from(value: LiteralValue) -> Self {
+        if let LiteralValue::Number(num) = value {
+            return num
         }
+        panic!("Not a LiteralValue::Number")
     }
 }
 
-impl Into<String> for LiteralValue {
-    fn into(self) -> String {
-        match self {
+impl From<LiteralValue> for String {
+    fn from(value: LiteralValue) -> Self {
+        match value {
+            LiteralValue::Number(n) => n.to_string(),
             LiteralValue::String(s) => s,
-            _ => panic!("Not a LiteralValue::String"),
+            LiteralValue::True => "true".to_string(),
+            LiteralValue::False => "false".to_string(),
+            LiteralValue::Nil => "nil".to_string(),
         }
     }
 }
@@ -204,7 +203,7 @@ impl Scanner {
             self.tokens
                 .push(Token::new(TokenType::Eof, "".to_string(), None, self.line));
 
-            return Ok(self.tokens);
+            Ok(self.tokens)
         }
     }
 
@@ -220,15 +219,15 @@ impl Scanner {
 
     fn matches(&mut self, expected: u8) -> bool {
         if self.is_at_end() {
-            return false;
+            return false
         }
         if self.source[self.current] != expected {
-            return false;
+            return false
         }
 
         self.current += 1;
 
-        return true;
+        true
     }
 
     fn add_token(&mut self, tt: TokenType) -> ScannerResult {
@@ -259,16 +258,16 @@ impl Scanner {
 
     fn peek(&self) -> u8 {
         if self.is_at_end() {
-            return b'\0';
+            return b'\0'
         }
-        return self.source[self.current];
+        self.source[self.current]
     }
 
     fn peek_next(&self) -> u8 {
         if self.current + 1 > self.source.len() {
-            return b'\0';
+            return b'\0'
         }
-        return self.source[self.current + 1];
+        self.source[self.current + 1]
     }
 
     fn string(&mut self) -> ScannerResult {

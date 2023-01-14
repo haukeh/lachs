@@ -87,7 +87,7 @@ impl Default for Environment {
 }
 
 pub trait ExpressionVisitor<T> {
-    fn visit_expr<'a>(&mut self, e: &'a Expr, env: Rc<RefCell<Environment>>) -> T;
+    fn visit_expr(&mut self, e: &Expr, env: Rc<RefCell<Environment>>) -> T;
 }
 
 pub trait StatementVisitor<T> {

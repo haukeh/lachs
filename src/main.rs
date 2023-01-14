@@ -1,4 +1,4 @@
-use std::{env, fs, io, process::exit, error::Error};
+use std::{env, error::Error, fs, io, process::exit};
 
 use ast::Stmt;
 use interpreter::Interpreter;
@@ -7,23 +7,26 @@ use scanner::Scanner;
 use crate::parser::Parser;
 
 mod ast;
+mod interpreter;
 mod parser;
 mod scanner;
-mod interpreter;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-
-    if args.len() > 2 {
-        println!("Usage: lachs [script]");
-        exit(64)
-    } else if args.len() == 2 {
-        if let Err(e) = run_file(&args[1]) {
-            println!("[ERROR] {e}");
-            exit(70)
+    match args.len() {
+        l if l > 2 => {
+            println!("Usage: lachs [script]");
+            exit(64)
         }
-    } else {
-        run_prompt();
+        2 => {
+            if let Err(e) = run_file(&args[1]) {
+                println!("[ERROR] {e}");
+                exit(70)
+            }
+        }
+        _ => {
+            run_prompt();
+        }
     }
     exit(0)
 }
@@ -32,14 +35,14 @@ fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
     let source = fs::read_to_string(path)?;
     let stmts = parse(source)?;
     let mut interpreter = Interpreter::new();
-    interpreter.interpret(&stmts);    
+    interpreter.interpret(&stmts);
     Ok(())
 }
 
 fn run_prompt() {
     println!("> welcome to lachs");
-    let mut interpreter = Interpreter::new();    
-    loop {        
+    let mut interpreter = Interpreter::new();
+    loop {
         let mut stmt = String::new();
         io::stdin()
             .read_line(&mut stmt)
@@ -47,7 +50,7 @@ fn run_prompt() {
         match parse(stmt) {
             Ok(stmt) => interpreter.interpret(&stmt),
             Err(e) => println!("[ERROR] {e}"),
-        }       
+        }
     }
 }
 

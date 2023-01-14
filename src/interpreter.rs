@@ -24,7 +24,7 @@ impl Interpreter {
 }
 
 impl StatementVisitor<()> for Interpreter {
-    fn visit_stmt(&mut self, e: &Stmt, env: Rc<RefCell<Environment>>) -> () {
+    fn visit_stmt(&mut self, e: &Stmt, env: Rc<RefCell<Environment>>) {
         match e {
             Stmt::Expression(expr) => {
                 let _ = self.visit_expr(expr, env);
@@ -41,7 +41,7 @@ impl StatementVisitor<()> for Interpreter {
                 };
 
                 let mut e = (*env).borrow_mut();                
-                e.define(name.lexeme.clone(), init.clone());
+                e.define(name.lexeme.clone(), init);
             }
             Stmt::Block(stmts) => {                
                 let bor = Rc::new(RefCell::new(Environment::with_enclosing(Rc::clone( &self.env, ))));
@@ -143,7 +143,7 @@ impl ExpressionVisitor<LiteralValue> for Interpreter {
             }
             Expr::Grouping { expr } => self.visit_expr(expr, Rc::clone(&env)),
             Expr::Literal(lit) => lit.clone(),
-            Expr::Variable(var) => (*env).borrow().get(&var.lexeme).clone(),
+            Expr::Variable(var) => (*env).borrow().get(&var.lexeme),
             Expr::Assign { name, value } => {
                 let value = self.visit_expr(value, Rc::clone(&env));
                 (*env).borrow_mut().assign(name, value.clone());

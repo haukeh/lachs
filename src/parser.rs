@@ -24,7 +24,7 @@ impl Iterator for TokenIter {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.tokens.len() > 0 {
+        if !self.tokens.is_empty() {
             return Some(self.tokens.remove(0));
         }
         None
@@ -52,7 +52,7 @@ impl Parser {
     }
 
     fn declaration(&mut self) -> Result<Stmt, ParserError> {
-        let res = if let Some(_) = self.matches(TokenType::Var) {
+        let res = if self.matches(TokenType::Var).is_some() {
             self.var_decl()
         } else {
             self.statement()
@@ -69,7 +69,7 @@ impl Parser {
     fn var_decl(&mut self) -> Result<Stmt, ParserError> {
         let name = self.consume(TokenType::Identifier, "Expected variable name.")?;
         let mut initializer = None;
-        if let Some(_) = self.matches(TokenType::Equal) {
+        if self.matches(TokenType::Equal).is_some() {
             initializer = Some(self.expression()?);
         }
         self.consume(
@@ -81,13 +81,13 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Stmt, ParserError> {
-        if let Some(_) = self.matches(TokenType::Print) {
+        if self.matches(TokenType::Print).is_some() {
             return self.print_stmt();
         }
-        if let Some(_) = self.matches(TokenType::LeftBrace) {
+        if self.matches(TokenType::LeftBrace).is_some() {
             return Ok(Stmt::Block(self.block()?))
         }
-        return self.expression_stmt();
+        self.expression_stmt()
     }
 
     fn block(&mut self) -> Result<Vec<Stmt>, ParserError> {
@@ -199,13 +199,13 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<Expr, ParserError> {
-        if let Some(_) = self.matches(TokenType::False) {
+        if self.matches(TokenType::False).is_some() {
             return Ok(Expr::Literal(LiteralValue::False));
         }
-        if let Some(_) = self.matches(TokenType::True) {
+        if self.matches(TokenType::True).is_some() {
             return Ok(Expr::Literal(LiteralValue::True));
         }
-        if let Some(_) = self.matches(TokenType::Nil) {
+        if self.matches(TokenType::Nil).is_some() {
             return Ok(Expr::Literal(LiteralValue::Nil));
         }
         if let Some(tok) = self.matches_one(vec![TokenType::Number, TokenType::String]) {
@@ -216,7 +216,7 @@ impl Parser {
         if let Some(identifier) = self.matches(TokenType::Identifier) {
             return Ok(Expr::Variable(identifier));
         }
-        if let Some(_) = self.matches(TokenType::LeftParen) {
+        if self.matches(TokenType::LeftParen).is_some() {
             let expr = self.expression()?;
             let _ = self.consume(TokenType::RightParen, "Expect ')' after expression.")?;
             return Ok(Expr::Grouping {
