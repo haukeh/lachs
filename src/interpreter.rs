@@ -1,8 +1,8 @@
-use std::{borrow::BorrowMut, cell::RefCell, collections::HashMap, rc::Rc};
+use std::{borrow::BorrowMut, cell::RefCell, rc::Rc};
 
 use crate::{
     ast::{Environment, Expr, ExpressionVisitor, StatementVisitor, Stmt},
-    scanner::{LiteralValue, Token, TokenType},
+    scanner::{LiteralValue, TokenType},
 };
 
 pub struct Interpreter {

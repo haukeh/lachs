@@ -2,7 +2,7 @@ use std::iter::{self, Peekable};
 use thiserror::Error;
 
 use crate::{
-    ast::{Expr, Stmt, TokenHolder},
+    ast::{Expr, Stmt},
     scanner::{LiteralValue, Token, TokenType},
 };
 
@@ -280,35 +280,5 @@ impl Parser {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::ast::AstPrinter;
-
-    use super::*;
-
-    #[test]
-    fn test_parser() {
-        let mut p = Parser::new(vec![
-            Token::new(
-                TokenType::Number,
-                "14".to_string(),
-                Some(LiteralValue::Number(14f64)),
-                1,
-            ),
-            Token::new(TokenType::Plus, "+".to_string(), None, 1),
-            Token::new(
-                TokenType::Number,
-                "6".to_string(),
-                Some(LiteralValue::Number(6f64)),
-                1,
-            ),
-        ]);
-
-        let res = p.parse().unwrap();
-
-        // assert_eq!("(+ 14 6)", AstPrinter::new().string(res.first().unwrap()));
     }
 }

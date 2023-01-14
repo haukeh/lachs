@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc, cell::RefCell};
 
-use crate::scanner::{LiteralValue, Token, TokenType};
+use crate::scanner::{LiteralValue, Token};
 
 pub trait TokenHolder<'a> {
     fn token(&'a self) -> Option<&'a Token>;
@@ -109,30 +109,4 @@ pub trait ExpressionVisitor<T> {
 
 pub trait StatementVisitor<T> {
     fn visit_stmt(&mut self, e: &Stmt, env: Rc<RefCell<Environment>>) -> T;
-}
-
-
-#[cfg(test)]
-mod tests {
-    use crate::scanner::TokenType;
-
-    use super::*;
-
-    #[test]
-    fn test_ast_printer() {
-        let expr = Expr::Binary {
-            left: Box::new(Expr::Unary {
-                op: Token::new(TokenType::Minus, "-".to_string(), None, 1),
-                right: Box::new(Expr::Literal(LiteralValue::Number(123.0))),
-            }),
-            op: Token::new(TokenType::Star, "*".to_string(), None, 1),
-            right: Box::new(Expr::Grouping {
-                expr: Box::new(Expr::Literal(LiteralValue::Number(45.67))),
-            }),
-        };
-
-        let expr = AstPrinter::new().visit_expr(&expr);
-
-        assert_eq!(expr.deref(), "(* (- 123) (group 45.67))");
-    }
 }
