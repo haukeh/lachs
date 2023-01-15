@@ -10,7 +10,7 @@ mod ast;
 mod interpreter;
 mod parser;
 mod scanner;
-
+mod minimal;
 fn main() {
     let args: Vec<String> = env::args().collect();
     match args.len() {
