@@ -94,9 +94,7 @@ impl Environment {
             let p = parent_env.borrow();
             return p.get(name)
         }
-
-        println!("{} not in {:?}", name, self);
-        
+    
         panic!("Undefined variable {}", name);
     }
 }
