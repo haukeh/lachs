@@ -1,10 +1,17 @@
-use std::{collections::HashMap, rc::Rc, cell::RefCell};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
+use log::debug;
 
 use crate::scanner::{LiteralValue, Token};
 
 #[derive(Debug)]
 pub enum Expr {
     Unary {
+        op: Token,
+        right: Box<Expr>,
+    },
+    Logical {
+        left: Box<Expr>,
         op: Token,
         right: Box<Expr>,
     },
@@ -24,31 +31,38 @@ pub enum Expr {
     Variable(Token),
 }
 
+#[derive(Debug)]
 pub enum Stmt {
     Expression(Expr),
+    If {
+        cond: Expr,
+        then: Box<Stmt>,
+        elze: Option<Box<Stmt>>,
+    },
     Print(Expr),
     Var(Token, Option<Expr>),
-    Block(Vec<Stmt>)
+    While(Expr, Box<Stmt>),
+    Block(Vec<Stmt>),
 }
 
 #[derive(Debug)]
 pub struct Environment {
     values: HashMap<String, LiteralValue>,
-    enclosing: Option<Rc<RefCell<Environment>>>
+    enclosing: Option<Rc<RefCell<Environment>>>,
 }
 
 impl Environment {
     pub fn new() -> Self {
         Environment {
             values: HashMap::new(),
-            enclosing: None
+            enclosing: None,
         }
     }
 
-    pub fn with_enclosing(enc: Rc<RefCell<Environment>>) -> Self {
+    pub fn with_enclosing(parent: Rc<RefCell<Environment>>) -> Self {
         Environment {
             values: HashMap::new(),
-            enclosing: Some(enc),         
+            enclosing: Some(parent),
         }
     }
 
@@ -57,17 +71,22 @@ impl Environment {
     }
 
     pub fn assign(&mut self, name: &Token, val: LiteralValue) {
+        debug!("Assignment {:?}={} [env: {:?}", name.lexeme, val, self);
+        
         if let Some(local) = self.values.get_mut(&name.lexeme) {
             *local = val;
-        } else if let Some(parent_env) = self.enclosing.as_ref() {                
+        } else if let Some(parent_env) = self.enclosing.as_ref() {
             parent_env.borrow_mut().assign(name, val);
-        }           
-        
-        panic!("Assign to undefined variable {}", name.lexeme)        
+        } else {
+            panic!("Assign to undefined variable {}", name.lexeme)
+        }
     }
 
     pub fn get(&self, name: &str) -> LiteralValue {
+        debug!("Looking up {} in {:?}", name, self);
+
         if let Some(local) = self.values.get(name) {
+            debug!("Found: {}", local);
             return local.clone()
         }
 
@@ -75,14 +94,10 @@ impl Environment {
             let p = parent_env.borrow();
             return p.get(name)
         }
-        
-        panic!("Undefined variable {}", name);       
-    }
-}
 
-impl Default for Environment {
-    fn default() -> Self {
-        Self::new()
+        println!("{} not in {:?}", name, self);
+        
+        panic!("Undefined variable {}", name);
     }
 }
 

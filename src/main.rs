@@ -10,8 +10,9 @@ mod ast;
 mod interpreter;
 mod parser;
 mod scanner;
-mod minimal;
 fn main() {
+    env_logger::init();
+    
     let args: Vec<String> = env::args().collect();
     match args.len() {
         l if l > 2 => {

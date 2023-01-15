@@ -1,5 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
+use log::debug;
+
 use crate::{
     ast::{Environment, Expr, ExpressionVisitor, StatementVisitor, Stmt},
     scanner::{LiteralValue, TokenType},
@@ -18,7 +20,7 @@ impl Interpreter {
 
     pub fn interpret(&mut self, program: &Vec<Stmt>) {
         for stmt in program {
-            self.visit_stmt(stmt, self.env.clone());
+            self.visit_stmt(stmt, Rc::clone(&self.env));
         }
     }
 }
@@ -27,10 +29,10 @@ impl StatementVisitor<()> for Interpreter {
     fn visit_stmt(&mut self, e: &Stmt, env: Rc<RefCell<Environment>>) {
         match e {
             Stmt::Expression(expr) => {
-                let _ = self.visit_expr(expr, env);
+                let _ = self.visit_expr(expr, Rc::clone(&env));
             }
             Stmt::Print(expr) => {
-                let val = self.visit_expr(expr, env);
+                let val = self.visit_expr(expr, Rc::clone(&env));
                 println!("{val}");
             }
             Stmt::Var(name, initializer) => {
@@ -40,13 +42,28 @@ impl StatementVisitor<()> for Interpreter {
                     LiteralValue::Nil
                 };
 
-                let mut e = (*env).borrow_mut();                
+                debug!("inserting {}={} into env {:?}", name.lexeme, init, env);
+
+                let mut e = (*env).borrow_mut();
                 e.define(name.lexeme.clone(), init);
             }
-            Stmt::Block(stmts) => {                
-                let bor = Rc::new(RefCell::new(Environment::with_enclosing(Rc::clone( &self.env, ))));
+            Stmt::Block(stmts) => {
+                let subscope_env =
+                    Rc::new(RefCell::new(Environment::with_enclosing(Rc::clone(&env))));
                 for stmt in stmts {
-                    self.visit_stmt(stmt, Rc::clone(&bor));
+                    self.visit_stmt(stmt, Rc::clone(&subscope_env));
+                }
+            }
+            Stmt::If { cond, then, elze } => {
+                if self.visit_expr(cond, Rc::clone(&env)).is_truthy() {
+                    self.visit_stmt(then, Rc::clone(&env));
+                } else if let Some(else_stmt) = elze {
+                    self.visit_stmt(else_stmt, Rc::clone(&env));
+                }
+            }
+            Stmt::While(cond, body) => {
+                while self.visit_expr(cond, Rc::clone(&env)).is_truthy() {
+                    self.visit_stmt(body, Rc::clone(&env));
                 }
             }
         }
@@ -146,8 +163,17 @@ impl ExpressionVisitor<LiteralValue> for Interpreter {
             Expr::Variable(var) => (*env).borrow().get(&var.lexeme),
             Expr::Assign { name, value } => {
                 let value = self.visit_expr(value, Rc::clone(&env));
-                (*env).borrow_mut().assign(name, value.clone());
+                let mut env = (*env).borrow_mut();
+                env.assign(name, value.clone());
                 value
+            }
+            Expr::Logical { left, op, right } => {
+                let left = self.visit_expr(left, Rc::clone(&env));
+                match op.typ {
+                    TokenType::Or if left.is_truthy() => left,
+                    _ if !left.is_truthy() => left,
+                    _ => self.visit_expr(right, Rc::clone(&env)),
+                }
             }
         }
     }
