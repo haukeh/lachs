@@ -71,7 +71,7 @@ impl Environment {
     }
 
     pub fn assign(&mut self, name: &Token, val: LiteralValue) {
-        debug!("Assignment {:?}={} [env: {:?}", name.lexeme, val, self);
+        debug!("assignment {:?}={} [env: {:?}", name.lexeme, val, self);
         
         if let Some(local) = self.values.get_mut(&name.lexeme) {
             *local = val;
@@ -83,10 +83,10 @@ impl Environment {
     }
 
     pub fn get(&self, name: &str) -> LiteralValue {
-        debug!("Looking up {} in {:?}", name, self);
+        debug!("looking for {} in {:?}", name, self);
 
         if let Some(local) = self.values.get(name) {
-            debug!("Found: {}", local);
+            debug!("found: {}", local);
             return local.clone()
         }
 
