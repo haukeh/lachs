@@ -5,8 +5,8 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
-    LeftParen,
-    RightParen,
+    LeftParent,
+    RightParent,
     LeftBrace,
     RightBrace,
     Comma,
