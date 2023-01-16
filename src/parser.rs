@@ -100,7 +100,7 @@ impl Parser {
     }
 
     fn for_statement(&mut self) -> Result<Stmt, ParserError> {
-        self.consume(TokenType::LeftParen, "Expect ( after for")?;
+        self.consume(TokenType::LeftParent, "Expect ( after for")?;
         
         let init = if self.matches(TokenType::Semicolon).is_some() {
             None
@@ -117,12 +117,12 @@ impl Parser {
         };        
         self.consume(TokenType::Semicolon, "Expect ; after loop condition")?;
 
-        let inc = if self.matches(TokenType::RightParen).is_none() {
+        let inc = if self.matches(TokenType::RightParent).is_none() {
             Some(self.expression()?)
         } else {
             None
         };
-        self.consume(TokenType::RightParen, "Expect ) after for clauses")?;
+        self.consume(TokenType::RightParent, "Expect ) after for clauses")?;
         
         let mut body = self.statement()?;
 
@@ -140,18 +140,18 @@ impl Parser {
      }
 
     fn while_statement(&mut self) -> Result<Stmt, ParserError> {
-        self.consume(TokenType::LeftParen, "Expect ( after while")?;
+        self.consume(TokenType::LeftParent, "Expect ( after while")?;
         let cond = self.expression()?;
-        self.consume(TokenType::RightParen, "Expect ) after condition")?;
+        self.consume(TokenType::RightParent, "Expect ) after condition")?;
         let body = self.statement()?;
 
         Ok(Stmt::While(cond, Box::new(body)))
     }
 
     fn if_statement(&mut self) -> Result<Stmt, ParserError> {
-        self.consume(TokenType::LeftParen, "Expect '(' after if")?;
+        self.consume(TokenType::LeftParent, "Expect '(' after if")?;
         let cond = self.expression()?;
-        self.consume(TokenType::RightParen, "Expect ')' after if condition.")?;
+        self.consume(TokenType::RightParent, "Expect ')' after if condition.")?;
 
         let then = Box::new(self.statement()?);
 
