@@ -12,7 +12,7 @@ mod parser;
 mod scanner;
 fn main() {
     env_logger::init();
-    
+
     let args: Vec<String> = env::args().collect();
     match args.len() {
         l if l > 2 => {
@@ -36,7 +36,7 @@ fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
     let source = fs::read_to_string(path)?;
     let stmts = parse(source)?;
     let mut interpreter = Interpreter::new();
-    interpreter.interpret(&stmts);
+    interpreter.interpret(&stmts)?;
     Ok(())
 }
 
@@ -48,9 +48,11 @@ fn run_prompt() {
         io::stdin()
             .read_line(&mut stmt)
             .expect("Failed to read line");
-        match parse(stmt) {
-            Ok(stmt) => interpreter.interpret(&stmt),
-            Err(e) => println!("[ERROR] {e}"),
+
+        if let Err(e) =
+            parse(stmt).and_then(|stmt| interpreter.interpret(&stmt).map_err(|err| err.into()))
+        {
+            println!("[ERROR] {e}")
         }
     }
 }

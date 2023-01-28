@@ -1,4 +1,4 @@
-use std::{fmt::Display, ops::Add};
+use std::fmt::Display;
 
 use phf::phf_map;
 use thiserror::Error;
@@ -60,47 +60,6 @@ pub enum LiteralValue {
     True,
     False,
     Nil,
-}
-
-impl LiteralValue {
-    pub fn is_truthy(&self) -> bool {
-        !matches!(self, LiteralValue::False | LiteralValue::Nil)
-    }
-}
-
-impl From<LiteralValue> for f64 {
-    fn from(value: LiteralValue) -> Self {
-        if let LiteralValue::Number(num) = value {
-            return num
-        }
-        panic!("Not a LiteralValue::Number")
-    }
-}
-
-impl From<LiteralValue> for String {
-    fn from(value: LiteralValue) -> Self {
-        match value {
-            LiteralValue::Number(n) => n.to_string(),
-            LiteralValue::String(s) => s,
-            LiteralValue::True => "true".to_string(),
-            LiteralValue::False => "false".to_string(),
-            LiteralValue::Nil => "nil".to_string(),
-        }
-    }
-}
-
-impl Add<LiteralValue> for LiteralValue {
-    type Output = LiteralValue;
-
-    fn add(self, rhs: LiteralValue) -> LiteralValue {
-        if let (LiteralValue::String(lhs), LiteralValue::String(rhs)) = (&self, &rhs) {
-            return LiteralValue::String(format!("{}{}", lhs, rhs));
-        }
-        if let (LiteralValue::Number(lhs), LiteralValue::Number(rhs)) = (&self, &rhs) {
-            return LiteralValue::Number(lhs + rhs);
-        }
-        panic!("cannot add operand types {} and {}", self, rhs)
-    }
 }
 
 impl Display for LiteralValue {

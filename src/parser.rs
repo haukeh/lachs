@@ -2,7 +2,7 @@ use std::iter::{self, Peekable};
 use thiserror::Error;
 
 use crate::{
-    ast::{Expr, Stmt},
+    ast::{Expr, Stmt, FunctionDecl},
     scanner::{LiteralValue, Token, TokenType},
 };
 
@@ -14,6 +14,14 @@ pub enum ParserError {
     UnexpectedEOF,
     #[error("Expected token not found: {0}")]
     ExpectedTokenNotFound(String),
+    #[error("Function argument limit of 255 was exceeded")]
+    TooManyFnArguments,
+}
+
+#[derive(Debug)]
+enum FunctionKind {
+    Func,
+    Method,
 }
 
 struct TokenIter {
@@ -54,6 +62,8 @@ impl Parser {
     fn declaration(&mut self) -> Result<Stmt, ParserError> {
         let res = if self.matches(TokenType::Var).is_some() {
             self.var_decl()
+        } else if self.matches(TokenType::Fun).is_some() {
+            self.function(FunctionKind::Func)
         } else {
             self.statement()
         };
@@ -64,6 +74,37 @@ impl Parser {
                 err
             }
         }
+    }
+
+    fn function(&mut self, kind: FunctionKind) -> Result<Stmt, ParserError> {
+        let name = self.consume(TokenType::Identifier, &format!("Expected {:?} name.", kind))?;
+        self.consume(
+            TokenType::LeftParen,
+            &format!("Expected '(' after {:?} name.", kind),
+        )?;
+        let mut params = Vec::new();
+        if !self.next_is(TokenType::RightParen) {
+            loop {
+                if params.len() >= 255 {
+                    return Err(ParserError::TooManyFnArguments);
+                }
+
+                params.push(self.consume(TokenType::Identifier, "Expected parameter name.")?);
+
+                if self.matches(TokenType::Comma).is_none() {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expected ')' after parameters.")?;
+        self.consume(
+            TokenType::LeftBrace,
+            &format!("Expected '{{' before {:?} body.", kind),
+        )?;
+
+        let body = self.block()?;
+
+        Ok(Stmt::Function(FunctionDecl { name, params, body }))
     }
 
     fn var_decl(&mut self) -> Result<Stmt, ParserError> {
@@ -82,16 +123,16 @@ impl Parser {
 
     fn statement(&mut self) -> Result<Stmt, ParserError> {
         if self.matches(TokenType::For).is_some() {
-            return self.for_statement()
+            return self.for_statement();
         }
         if self.matches(TokenType::If).is_some() {
-            return self.if_statement()
+            return self.if_statement();
         }
         if self.matches(TokenType::Print).is_some() {
-            return self.print_stmt()
+            return self.print_stmt();
         }
         if self.matches(TokenType::While).is_some() {
-            return self.while_statement()
+            return self.while_statement();
         }
         if self.matches(TokenType::LeftBrace).is_some() {
             return Ok(Stmt::Block(self.block()?));
@@ -101,7 +142,7 @@ impl Parser {
 
     fn for_statement(&mut self) -> Result<Stmt, ParserError> {
         self.consume(TokenType::LeftParen, "Expect ( after for")?;
-        
+
         let init = if self.matches(TokenType::Semicolon).is_some() {
             None
         } else if self.matches(TokenType::Var).is_some() {
@@ -112,9 +153,9 @@ impl Parser {
 
         let cond = if self.matches(TokenType::Semicolon).is_none() {
             self.expression()?
-        } else { 
+        } else {
             Expr::Literal(LiteralValue::True)
-        };        
+        };
         self.consume(TokenType::Semicolon, "Expect ; after loop condition")?;
 
         let inc = if self.matches(TokenType::RightParen).is_none() {
@@ -123,13 +164,13 @@ impl Parser {
             None
         };
         self.consume(TokenType::RightParen, "Expect ) after for clauses")?;
-        
+
         let mut body = self.statement()?;
 
         if let Some(inc) = inc {
             body = Stmt::Block(vec![body, Stmt::Expression(inc)])
         }
-        
+
         body = Stmt::While(cond, Box::new(body));
 
         if let Some(init) = init {
@@ -137,7 +178,7 @@ impl Parser {
         }
 
         Ok(body)
-     }
+    }
 
     fn while_statement(&mut self) -> Result<Stmt, ParserError> {
         self.consume(TokenType::LeftParen, "Expect ( after while")?;
@@ -167,7 +208,7 @@ impl Parser {
     fn block(&mut self) -> Result<Vec<Stmt>, ParserError> {
         let mut stmts = Vec::new();
 
-        while !self.peek_for(TokenType::RightBrace) && !self.at_end() {
+        while !self.next_is(TokenType::RightBrace) && !self.at_end() {
             stmts.push(self.declaration()?)
         }
         self.consume(TokenType::RightBrace, "Expect '}' after block")?;
@@ -302,7 +343,41 @@ impl Parser {
             let right = Box::new(self.unary()?);
             return Ok(Expr::Unary { op, right });
         }
-        self.primary()
+
+        self.call()
+    }
+
+    fn call(&mut self) -> Result<Expr, ParserError> {
+        let mut expr = self.primary()?;
+
+        while self.matches(TokenType::LeftParen).is_some() {
+            expr = self.finish_call(expr)?;
+        }
+
+        Ok(expr)
+    }
+
+    fn finish_call(&mut self, callee: Expr) -> Result<Expr, ParserError> {
+        let mut args = Vec::new();
+        if !self.next_is(TokenType::RightParen) {
+            loop {
+                if args.len() >= 255 {
+                    return Err(ParserError::TooManyFnArguments);
+                }
+                args.push(self.expression()?);
+                if self.matches(TokenType::Comma).is_none() {
+                    break;
+                }
+            }
+        }
+
+        let paren = self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
+
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            paren,
+            args,
+        })
     }
 
     fn primary(&mut self) -> Result<Expr, ParserError> {
@@ -338,7 +413,7 @@ impl Parser {
     }
 
     fn consume(&mut self, tt: TokenType, err: &str) -> Result<Token, ParserError> {
-        if self.peek_for(tt) {
+        if self.next_is(tt) {
             Ok(self.tokens.next().unwrap())
         } else {
             Err(ParserError::ExpectedTokenNotFound(err.to_string()))
@@ -354,12 +429,12 @@ impl Parser {
             .next_if(|t| types.into_iter().any(|tt| t.typ == tt))
     }
 
-    fn peek_for(&mut self, tt: TokenType) -> bool {
+    fn next_is(&mut self, tt: TokenType) -> bool {
         self.peek().filter(|&t| t.typ == tt).is_some()
     }
 
     fn at_end(&mut self) -> bool {
-        self.peek_for(TokenType::Eof)
+        self.next_is(TokenType::Eof)
     }
 
     fn peek(&mut self) -> Option<&Token> {
