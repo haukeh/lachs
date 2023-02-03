@@ -151,7 +151,12 @@ impl Interpreter {
                 e.define(name.lexeme.clone(), init);
                 Ok(ReturnValue::Unit)
             }
-            Stmt::Block(stmts) => self.execute_block(stmts),
+            Stmt::Block(stmts) => {
+                let env = Rc::new(RefCell::new(Environment::with_enclosing(Rc::clone(
+                    &self.env,
+                ))));
+                self.execute_block(stmts, env)
+            }
             Stmt::If { cond, then, elze } => {
                 if self.expression(cond)?.is_truthy() {
                     if let rv @ ReturnValue::Value(_) = self.statement(then)? {
@@ -175,6 +180,7 @@ impl Interpreter {
             Stmt::Function(func) => {
                 let f = Value::Func(Function {
                     declaration: func.clone(),
+                    closure: Rc::clone(&self.env),
                 });
 
                 (*self.env).borrow_mut().define(func.name.lexeme.clone(), f);
@@ -189,18 +195,31 @@ impl Interpreter {
         }
     }
 
-    pub(crate) fn execute_block(&mut self, stmts: &Vec<Stmt>) -> anyhow::Result<ReturnValue> {
-        let old_env = Rc::clone(&self.env);
-        self.env = Rc::new(RefCell::new(Environment::with_enclosing(Rc::clone(
-            &old_env,
-        ))));
+    pub(crate) fn execute_block(
+        &mut self,
+        stmts: &Vec<Stmt>,
+        env: Rc<RefCell<Environment>>,
+    ) -> anyhow::Result<ReturnValue> {
+        let prev_env = Rc::clone(&self.env);
+        self.env = Rc::clone(&env);
+
+        let mut result = Ok(ReturnValue::Unit);
         for stmt in stmts {
-            if let rv @ ReturnValue::Value(_) = self.statement(stmt)? {
-                return Ok(rv);
+            match self.statement(stmt) {
+                ret @ Ok(ReturnValue::Value(_)) => {
+                    result = ret;
+                    break;
+                }
+                err @ Err(_) => {
+                    result = err;
+                    break;
+                }
+                _ => { /* Unit return value */ }
             }
         }
-        self.env = old_env;
-        Ok(ReturnValue::Unit)
+
+        self.env = prev_env;
+        result
     }
 }
 

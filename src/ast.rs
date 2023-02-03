@@ -24,6 +24,7 @@ pub trait Callable {
 #[derive(Debug, Clone)]
 pub struct Function {
     pub declaration: FunctionDecl,
+    pub closure: Rc<RefCell<Environment>>
 }
 
 #[derive(Clone)]
@@ -56,24 +57,16 @@ impl Callable for Function {
             body,
         } = &self.declaration;
 
-        let old_env = Rc::clone(&interpreter.env);
-        interpreter.env = Rc::new(RefCell::new(Environment::with_enclosing(Rc::clone(
-            &old_env,
-        ))));
-
-        {
-            let mut env = interpreter.env.borrow_mut();
-            for i in 0..params.len() {
-                env.define(params[i].lexeme.clone(), args[i].clone());
-            }
+        let mut env = Environment::with_enclosing(Rc::clone(&self.closure));
+        
+        for i in 0..params.len() {
+            env.define(params[i].lexeme.clone(), args[i].clone());
         }
 
-        let res = match interpreter.execute_block(body)? {
+        let res = match interpreter.execute_block(body, Rc::new(RefCell::new(env)))? {
             ReturnValue::Value(v) => v,
             ReturnValue::Unit => Value::Nil,
         };
-
-        interpreter.env = old_env;
 
         Ok(res)
     }
@@ -263,7 +256,7 @@ pub enum Stmt {
     Function(FunctionDecl),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Environment {
     values: HashMap<String, Value>,
     enclosing: Option<Rc<RefCell<Environment>>>,
@@ -271,10 +264,7 @@ pub struct Environment {
 
 impl Environment {
     pub fn new() -> Self {
-        Environment {
-            values: HashMap::new(),
-            enclosing: None,
-        }
+        Default::default()
     }
 
     pub fn with_enclosing(parent: Rc<RefCell<Environment>>) -> Self {
