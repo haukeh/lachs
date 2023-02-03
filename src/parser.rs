@@ -2,7 +2,7 @@ use std::iter::{self, Peekable};
 use thiserror::Error;
 
 use crate::{
-    ast::{Expr, Stmt, FunctionDecl},
+    ast::{Expr, FunctionDecl, Stmt},
     scanner::{LiteralValue, Token, TokenType},
 };
 
@@ -131,6 +131,9 @@ impl Parser {
         if self.matches(TokenType::Print).is_some() {
             return self.print_stmt();
         }
+        if let Some(tok) = self.matches(TokenType::Return) {
+            return self.return_statement(tok);
+        }
         if self.matches(TokenType::While).is_some() {
             return self.while_statement();
         }
@@ -138,6 +141,18 @@ impl Parser {
             return Ok(Stmt::Block(self.block()?));
         }
         self.expression_stmt()
+    }
+
+    fn return_statement(&mut self, keyword: Token) -> Result<Stmt, ParserError> {
+        let mut value = Expr::Literal(LiteralValue::Nil);
+
+        if !self.next_is(TokenType::Semicolon) {
+            value = self.expression()?;
+        }
+
+        self.consume(TokenType::Semicolon, "Expected ';' after return value")?;
+
+        Ok(Stmt::Return(keyword, Box::new(value)))
     }
 
     fn for_statement(&mut self) -> Result<Stmt, ParserError> {

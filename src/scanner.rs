@@ -178,10 +178,10 @@ impl Scanner {
 
     fn matches(&mut self, expected: u8) -> bool {
         if self.is_at_end() {
-            return false
+            return false;
         }
         if self.source[self.current] != expected {
-            return false
+            return false;
         }
 
         self.current += 1;
@@ -217,14 +217,14 @@ impl Scanner {
 
     fn peek(&self) -> u8 {
         if self.is_at_end() {
-            return b'\0'
+            return b'\0';
         }
         self.source[self.current]
     }
 
     fn peek_next(&self) -> u8 {
         if self.current + 1 > self.source.len() {
-            return b'\0'
+            return b'\0';
         }
         self.source[self.current + 1]
     }

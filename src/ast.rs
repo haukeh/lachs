@@ -12,7 +12,7 @@ use log::debug;
 use thiserror::Error;
 
 use crate::{
-    interpreter::Interpreter,
+    interpreter::{Interpreter, ReturnValue},
     scanner::{LiteralValue, Token},
 };
 
@@ -23,13 +23,13 @@ pub trait Callable {
 
 #[derive(Debug, Clone)]
 pub struct Function {
-    pub declaration: FunctionDecl
+    pub declaration: FunctionDecl,
 }
 
 #[derive(Clone)]
 pub struct NativeFunction {
-    pub arity: usize, 
-    pub f: fn(&mut Interpreter, &[Value]) -> anyhow::Result<Value>
+    pub arity: usize,
+    pub f: fn(&mut Interpreter, &[Value]) -> anyhow::Result<Value>,
 }
 
 impl fmt::Debug for NativeFunction {
@@ -50,16 +50,32 @@ impl Callable for NativeFunction {
 
 impl Callable for Function {
     fn call(&self, interpreter: &mut Interpreter, args: &[Value]) -> anyhow::Result<Value> {
-        let FunctionDecl { name: _, params, body } = &self.declaration;
-        let mut env = Environment::with_enclosing(Rc::clone(&interpreter.globals));
-        
-        for i in 0..params.len() {
-            env.define(params[i].lexeme.clone(), args[i].clone())
+        let FunctionDecl {
+            name: _,
+            params,
+            body,
+        } = &self.declaration;
+
+        let old_env = Rc::clone(&interpreter.env);
+        interpreter.env = Rc::new(RefCell::new(Environment::with_enclosing(Rc::clone(
+            &old_env,
+        ))));
+
+        {
+            let mut env = interpreter.env.borrow_mut();
+            for i in 0..params.len() {
+                env.define(params[i].lexeme.clone(), args[i].clone());
+            }
         }
 
-        interpreter.execute_block(body, Rc::new(RefCell::new(env)))?;
+        let res = match interpreter.execute_block(body)? {
+            ReturnValue::Value(v) => v,
+            ReturnValue::Unit => Value::Nil,
+        };
 
-        Ok(Value::Nil)
+        interpreter.env = old_env;
+
+        Ok(res)
     }
 
     fn arity(&self) -> usize {
@@ -186,8 +202,8 @@ impl Display for Value {
             Value::String(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Nil => write!(f, "nil"),
-            Value::Func(_) => todo!(),
-            Value::NativeFunc(_) => todo!(),
+            Value::Func(_) => write!(f, "Function"),
+            Value::NativeFunc(_) => write!(f, "NativeFunction"),
         }
     }
 }
@@ -240,6 +256,7 @@ pub enum Stmt {
         elze: Option<Box<Stmt>>,
     },
     Print(Expr),
+    Return(Token, Box<Expr>),
     Var(Token, Option<Expr>),
     While(Expr, Box<Stmt>),
     Block(Vec<Stmt>),
@@ -284,7 +301,7 @@ impl Environment {
     }
 
     pub fn get(&self, name: &str) -> Value {
-        debug!("looking for {} in {:?}", name, self);
+        debug!("looking for {} in {:?}", name, self.values);
 
         if let Some(local) = self.values.get(name) {
             debug!("found: {}", local);
