@@ -60,9 +60,9 @@ impl Parser {
     }
 
     fn declaration(&mut self) -> Result<Stmt, ParserError> {
-        let res = if self.matches(TokenType::Var).is_some() {
+        let res = if self.take_match(TokenType::Var).is_some() {
             self.var_decl()
-        } else if self.matches(TokenType::Fun).is_some() {
+        } else if self.take_match(TokenType::Fun).is_some() {
             self.function(FunctionKind::Func)
         } else {
             self.statement()
@@ -90,7 +90,7 @@ impl Parser {
 
                 params.push(self.consume(TokenType::Identifier, "Expected parameter name.")?);
 
-                if self.matches(TokenType::Comma).is_none() {
+                if self.take_match(TokenType::Comma).is_none() {
                     break;
                 }
             }
@@ -109,7 +109,7 @@ impl Parser {
     fn var_decl(&mut self) -> Result<Stmt, ParserError> {
         let name = self.consume(TokenType::Identifier, "Expected variable name.")?;
         let mut initializer = None;
-        if self.matches(TokenType::Equal).is_some() {
+        if self.take_match(TokenType::Equal).is_some() {
             initializer = Some(self.expression()?);
         }
         self.consume(
@@ -121,22 +121,22 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Stmt, ParserError> {
-        if self.matches(TokenType::For).is_some() {
+        if self.take_match(TokenType::For).is_some() {
             return self.for_statement();
         }
-        if self.matches(TokenType::If).is_some() {
+        if self.take_match(TokenType::If).is_some() {
             return self.if_statement();
         }
-        if self.matches(TokenType::Print).is_some() {
+        if self.take_match(TokenType::Print).is_some() {
             return self.print_stmt();
         }
-        if let Some(tok) = self.matches(TokenType::Return) {
+        if let Some(tok) = self.take_match(TokenType::Return) {
             return self.return_statement(tok);
         }
-        if self.matches(TokenType::While).is_some() {
+        if self.take_match(TokenType::While).is_some() {
             return self.while_statement();
         }
-        if self.matches(TokenType::LeftBrace).is_some() {
+        if self.take_match(TokenType::LeftBrace).is_some() {
             return Ok(Stmt::Block(self.block()?));
         }
         self.expression_stmt()
@@ -157,22 +157,22 @@ impl Parser {
     fn for_statement(&mut self) -> Result<Stmt, ParserError> {
         self.consume(TokenType::LeftParen, "Expect ( after for")?;
 
-        let init = if self.matches(TokenType::Semicolon).is_some() {
+        let init = if self.take_match(TokenType::Semicolon).is_some() {
             None
-        } else if self.matches(TokenType::Var).is_some() {
+        } else if self.take_match(TokenType::Var).is_some() {
             Some(self.var_decl()?)
         } else {
             Some(self.expression_stmt()?)
         };
 
-        let cond = if self.matches(TokenType::Semicolon).is_none() {
+        let cond = if self.take_match(TokenType::Semicolon).is_none() {
             self.expression()?
         } else {
             Expr::Literal(LiteralValue::True)
         };
         self.consume(TokenType::Semicolon, "Expect ; after loop condition")?;
 
-        let inc = if self.matches(TokenType::RightParen).is_none() {
+        let inc = if self.take_match(TokenType::RightParen).is_none() {
             Some(self.expression()?)
         } else {
             None
@@ -210,7 +210,7 @@ impl Parser {
 
         let then = Box::new(self.statement()?);
 
-        let elze = if self.matches(TokenType::Else).is_some() {
+        let elze = if self.take_match(TokenType::Else).is_some() {
             Some(Box::new(self.statement()?))
         } else {
             None
@@ -249,7 +249,7 @@ impl Parser {
     fn assignment(&mut self) -> Result<Expr, ParserError> {
         let expr = self.or()?;
 
-        if let Some(equals) = self.matches(TokenType::Equal) {
+        if let Some(equals) = self.take_match(TokenType::Equal) {
             let value = self.assignment()?;
 
             if let Expr::Variable(name) = &expr {
@@ -268,7 +268,7 @@ impl Parser {
     fn or(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.and()?;
 
-        while let Some(op) = self.matches(TokenType::Or) {
+        while let Some(op) = self.take_match(TokenType::Or) {
             let right = Box::new(self.and()?);
             expr = Expr::Logical {
                 left: Box::new(expr),
@@ -283,7 +283,7 @@ impl Parser {
     fn and(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.equality()?;
 
-        while let Some(op) = self.matches(TokenType::And) {
+        while let Some(op) = self.take_match(TokenType::And) {
             let right = Box::new(self.equality()?);
             expr = Expr::Logical {
                 left: Box::new(expr),
@@ -364,7 +364,7 @@ impl Parser {
     fn call(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.primary()?;
 
-        while self.matches(TokenType::LeftParen).is_some() {
+        while self.take_match(TokenType::LeftParen).is_some() {
             expr = self.finish_call(expr)?;
         }
 
@@ -379,7 +379,7 @@ impl Parser {
                     return Err(ParserError::TooManyFnArguments);
                 }
                 args.push(self.expression()?);
-                if self.matches(TokenType::Comma).is_none() {
+                if self.take_match(TokenType::Comma).is_none() {
                     break;
                 }
             }
@@ -395,13 +395,13 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<Expr, ParserError> {
-        if self.matches(TokenType::False).is_some() {
+        if self.take_match(TokenType::False).is_some() {
             return Ok(Expr::Literal(LiteralValue::False));
         }
-        if self.matches(TokenType::True).is_some() {
+        if self.take_match(TokenType::True).is_some() {
             return Ok(Expr::Literal(LiteralValue::True));
         }
-        if self.matches(TokenType::Nil).is_some() {
+        if self.take_match(TokenType::Nil).is_some() {
             return Ok(Expr::Literal(LiteralValue::Nil));
         }
         if let Some(tok) = self.matches_one(vec![TokenType::Number, TokenType::String]) {
@@ -409,10 +409,10 @@ impl Parser {
                 tok.literal.expect("expected Number or String literal"),
             ));
         }
-        if let Some(identifier) = self.matches(TokenType::Identifier) {
+        if let Some(identifier) = self.take_match(TokenType::Identifier) {
             return Ok(Expr::Variable(identifier));
         }
-        if self.matches(TokenType::LeftParen).is_some() {
+        if self.take_match(TokenType::LeftParen).is_some() {
             let expr = self.expression()?;
             let _ = self.consume(TokenType::RightParen, "Expect ')' after expression.")?;
             return Ok(Expr::Grouping {
@@ -434,7 +434,7 @@ impl Parser {
         }
     }
 
-    fn matches(&mut self, t: TokenType) -> Option<Token> {
+    fn take_match(&mut self, t: TokenType) -> Option<Token> {
         self.matches_one(iter::once(t))
     }
 
