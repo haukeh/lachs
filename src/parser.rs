@@ -67,13 +67,12 @@ impl Parser {
         } else {
             self.statement()
         };
-        match res {
-            ok @ Ok(_) => ok,
-            err @ Err(_) => {
-                self.synchronize();
-                err
-            }
+        
+        if res.is_err() {
+            self.synchronize();
         }
+        
+        res        
     }
 
     fn function(&mut self, kind: FunctionKind) -> Result<Stmt, ParserError> {
