@@ -1,4 +1,10 @@
-use std::{env, error::Error, fs, io, process::exit};
+use std::{
+    env,
+    error::Error,
+    fs,
+    io::{self, Stdout},
+    process::exit,
+};
 
 use ast::Stmt;
 use interpreter::Interpreter;
@@ -35,14 +41,16 @@ fn main() {
 fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
     let source = fs::read_to_string(path)?;
     let stmts = parse(source)?;
-    let mut interpreter = Interpreter::new();
+    let mut stdout = io::stdout().lock();
+    let mut interpreter = Interpreter::new(&mut stdout);
     interpreter.interpret(&stmts)?;
     Ok(())
 }
 
 fn run_prompt() {
     println!("> welcome to lachs");
-    let mut interpreter = Interpreter::new();
+    let mut stdout = io::stdout().lock();
+    let mut interpreter = Interpreter::new(&mut stdout);
     loop {
         let mut stmt = String::new();
         io::stdin()
@@ -62,4 +70,33 @@ fn parse(source: String) -> Result<Vec<Stmt>, Box<dyn Error>> {
     let tokens = scanner.scan_tokens()?;
     let mut parser = Parser::new(tokens);
     Ok(parser.parse()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn closures_must_not_leak() {
+        let prog = r###"
+var a = "global";
+{
+    fun showA() {
+    print a;
+    }
+
+    showA();
+    var a = "block";
+    showA();
+}
+"###;
+        let mut out = Vec::new();
+        let mut interpreter = Interpreter::new(&mut out);
+        let stmts = parse(prog.to_string()).unwrap();
+        interpreter.interpret(&stmts).unwrap();
+
+        let s = String::from_utf8_lossy(&out);
+    
+        assert_ne!("global\nblock\n", s);
+    }
 }

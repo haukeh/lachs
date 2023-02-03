@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     rc::Rc,
     time::{SystemTime, UNIX_EPOCH},
+    io::{Write, self},
 };
 
 use crate::{
@@ -16,12 +17,13 @@ pub enum ReturnValue {
     Value(Value),
 }
 
-pub struct Interpreter {
+pub struct Interpreter<'a> {
     pub(crate) env: Rc<RefCell<Environment>>,
+    out: &'a mut dyn Write,
 }
 
-impl Interpreter {
-    pub fn new() -> Self {
+impl <'a> Interpreter<'a> {
+    pub fn new(out: &'a mut dyn Write) -> Self {
         let mut globals = Environment::new();
         globals.define(
             "clock".to_string(),
@@ -39,6 +41,7 @@ impl Interpreter {
 
         Interpreter {
             env: Rc::new(RefCell::new(env)),
+            out: out,
         }
     }
 
@@ -135,7 +138,7 @@ impl Interpreter {
             }
             Stmt::Print(expr) => {
                 let value = self.expression(expr)?;
-                println!("{}", value);
+                writeln!(&mut self.out, "{}", value);
                 Ok(ReturnValue::Unit)
             }
             Stmt::Var(name, initializer) => {
@@ -220,12 +223,6 @@ impl Interpreter {
 
         self.env = prev_env;
         result
-    }
-}
-
-impl Default for Interpreter {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

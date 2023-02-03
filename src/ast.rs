@@ -2,9 +2,9 @@ use core::fmt;
 use std::{
     cell::RefCell,
     collections::HashMap,
-    fmt::Display,
+    fmt::{Display, Write},
     ops::{Add, Mul, Sub},
-    rc::Rc,
+    rc::Rc, io,
 };
 
 use anyhow::anyhow;

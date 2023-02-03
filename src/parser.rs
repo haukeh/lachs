@@ -60,9 +60,9 @@ impl Parser {
     }
 
     fn declaration(&mut self) -> Result<Stmt, ParserError> {
-        let res = if self.take_match(TokenType::Var).is_some() {
+        let res = if self.take_if_matches(TokenType::Var).is_some() {
             self.var_decl()
-        } else if self.take_match(TokenType::Fun).is_some() {
+        } else if self.take_if_matches(TokenType::Fun).is_some() {
             self.function(FunctionKind::Func)
         } else {
             self.statement()
@@ -76,8 +76,8 @@ impl Parser {
     }
 
     fn function(&mut self, kind: FunctionKind) -> Result<Stmt, ParserError> {
-        let name = self.consume(TokenType::Identifier, &format!("Expected {:?} name.", kind))?;
-        self.consume(
+        let name = self.must_consume(TokenType::Identifier, &format!("Expected {:?} name.", kind))?;
+        self.must_consume(
             TokenType::LeftParen,
             &format!("Expected '(' after {:?} name.", kind),
         )?;
@@ -88,15 +88,15 @@ impl Parser {
                     return Err(ParserError::TooManyFnArguments);
                 }
 
-                params.push(self.consume(TokenType::Identifier, "Expected parameter name.")?);
+                params.push(self.must_consume(TokenType::Identifier, "Expected parameter name.")?);
 
-                if self.take_match(TokenType::Comma).is_none() {
+                if self.take_if_matches(TokenType::Comma).is_none() {
                     break;
                 }
             }
         }
-        self.consume(TokenType::RightParen, "Expected ')' after parameters.")?;
-        self.consume(
+        self.must_consume(TokenType::RightParen, "Expected ')' after parameters.")?;
+        self.must_consume(
             TokenType::LeftBrace,
             &format!("Expected '{{' before {:?} body.", kind),
         )?;
@@ -107,12 +107,12 @@ impl Parser {
     }
 
     fn var_decl(&mut self) -> Result<Stmt, ParserError> {
-        let name = self.consume(TokenType::Identifier, "Expected variable name.")?;
+        let name = self.must_consume(TokenType::Identifier, "Expected variable name.")?;
         let mut initializer = None;
-        if self.take_match(TokenType::Equal).is_some() {
+        if self.take_if_matches(TokenType::Equal).is_some() {
             initializer = Some(self.expression()?);
         }
-        self.consume(
+        self.must_consume(
             TokenType::Semicolon,
             "Expected ';' after variable declaration.",
         )?;
@@ -121,22 +121,22 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Stmt, ParserError> {
-        if self.take_match(TokenType::For).is_some() {
+        if self.take_if_matches(TokenType::For).is_some() {
             return self.for_statement();
         }
-        if self.take_match(TokenType::If).is_some() {
+        if self.take_if_matches(TokenType::If).is_some() {
             return self.if_statement();
         }
-        if self.take_match(TokenType::Print).is_some() {
+        if self.take_if_matches(TokenType::Print).is_some() {
             return self.print_stmt();
         }
-        if let Some(tok) = self.take_match(TokenType::Return) {
+        if let Some(tok) = self.take_if_matches(TokenType::Return) {
             return self.return_statement(tok);
         }
-        if self.take_match(TokenType::While).is_some() {
+        if self.take_if_matches(TokenType::While).is_some() {
             return self.while_statement();
         }
-        if self.take_match(TokenType::LeftBrace).is_some() {
+        if self.take_if_matches(TokenType::LeftBrace).is_some() {
             return Ok(Stmt::Block(self.block()?));
         }
         self.expression_stmt()
@@ -149,35 +149,35 @@ impl Parser {
             value = self.expression()?;
         }
 
-        self.consume(TokenType::Semicolon, "Expected ';' after return value")?;
+        self.must_consume(TokenType::Semicolon, "Expected ';' after return value")?;
 
         Ok(Stmt::Return(keyword, Box::new(value)))
     }
 
     fn for_statement(&mut self) -> Result<Stmt, ParserError> {
-        self.consume(TokenType::LeftParen, "Expect ( after for")?;
+        self.must_consume(TokenType::LeftParen, "Expect ( after for")?;
 
-        let init = if self.take_match(TokenType::Semicolon).is_some() {
+        let init = if self.take_if_matches(TokenType::Semicolon).is_some() {
             None
-        } else if self.take_match(TokenType::Var).is_some() {
+        } else if self.take_if_matches(TokenType::Var).is_some() {
             Some(self.var_decl()?)
         } else {
             Some(self.expression_stmt()?)
         };
 
-        let cond = if self.take_match(TokenType::Semicolon).is_none() {
+        let cond = if self.take_if_matches(TokenType::Semicolon).is_none() {
             self.expression()?
         } else {
             Expr::Literal(LiteralValue::True)
         };
-        self.consume(TokenType::Semicolon, "Expect ; after loop condition")?;
+        self.must_consume(TokenType::Semicolon, "Expect ; after loop condition")?;
 
-        let inc = if self.take_match(TokenType::RightParen).is_none() {
+        let inc = if self.take_if_matches(TokenType::RightParen).is_none() {
             Some(self.expression()?)
         } else {
             None
         };
-        self.consume(TokenType::RightParen, "Expect ) after for clauses")?;
+        self.must_consume(TokenType::RightParen, "Expect ) after for clauses")?;
 
         let mut body = self.statement()?;
 
@@ -195,22 +195,22 @@ impl Parser {
     }
 
     fn while_statement(&mut self) -> Result<Stmt, ParserError> {
-        self.consume(TokenType::LeftParen, "Expect ( after while")?;
+        self.must_consume(TokenType::LeftParen, "Expect ( after while")?;
         let cond = self.expression()?;
-        self.consume(TokenType::RightParen, "Expect ) after condition")?;
+        self.must_consume(TokenType::RightParen, "Expect ) after condition")?;
         let body = self.statement()?;
 
         Ok(Stmt::While(cond, Box::new(body)))
     }
 
     fn if_statement(&mut self) -> Result<Stmt, ParserError> {
-        self.consume(TokenType::LeftParen, "Expect '(' after if")?;
+        self.must_consume(TokenType::LeftParen, "Expect '(' after if")?;
         let cond = self.expression()?;
-        self.consume(TokenType::RightParen, "Expect ')' after if condition.")?;
+        self.must_consume(TokenType::RightParen, "Expect ')' after if condition.")?;
 
         let then = Box::new(self.statement()?);
 
-        let elze = if self.take_match(TokenType::Else).is_some() {
+        let elze = if self.take_if_matches(TokenType::Else).is_some() {
             Some(Box::new(self.statement()?))
         } else {
             None
@@ -225,20 +225,20 @@ impl Parser {
         while !self.next_is(TokenType::RightBrace) && !self.at_end() {
             stmts.push(self.declaration()?)
         }
-        self.consume(TokenType::RightBrace, "Expect '}' after block")?;
+        self.must_consume(TokenType::RightBrace, "Expect '}' after block")?;
 
         Ok(stmts)
     }
 
     fn print_stmt(&mut self) -> Result<Stmt, ParserError> {
         let value = self.expression()?;
-        self.consume(TokenType::Semicolon, "Expected ';' after value.")?;
+        self.must_consume(TokenType::Semicolon, "Expected ';' after value.")?;
         Ok(Stmt::Print(value))
     }
 
     fn expression_stmt(&mut self) -> Result<Stmt, ParserError> {
         let expr = self.expression()?;
-        self.consume(TokenType::Semicolon, "Expected ';' after expression.")?;
+        self.must_consume(TokenType::Semicolon, "Expected ';' after expression.")?;
         Ok(Stmt::Expression(expr))
     }
 
@@ -249,7 +249,7 @@ impl Parser {
     fn assignment(&mut self) -> Result<Expr, ParserError> {
         let expr = self.or()?;
 
-        if let Some(equals) = self.take_match(TokenType::Equal) {
+        if let Some(equals) = self.take_if_matches(TokenType::Equal) {
             let value = self.assignment()?;
 
             if let Expr::Variable(name) = &expr {
@@ -268,7 +268,7 @@ impl Parser {
     fn or(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.and()?;
 
-        while let Some(op) = self.take_match(TokenType::Or) {
+        while let Some(op) = self.take_if_matches(TokenType::Or) {
             let right = Box::new(self.and()?);
             expr = Expr::Logical {
                 left: Box::new(expr),
@@ -283,7 +283,7 @@ impl Parser {
     fn and(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.equality()?;
 
-        while let Some(op) = self.take_match(TokenType::And) {
+        while let Some(op) = self.take_if_matches(TokenType::And) {
             let right = Box::new(self.equality()?);
             expr = Expr::Logical {
                 left: Box::new(expr),
@@ -297,7 +297,7 @@ impl Parser {
 
     fn equality(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.comparison()?;
-        while let Some(op) = self.matches_one(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
+        while let Some(op) = self.take_if_matches_one(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
             let right = Box::new(self.comparison()?);
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -310,7 +310,7 @@ impl Parser {
 
     fn comparison(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.term()?;
-        while let Some(op) = self.matches_one(vec![
+        while let Some(op) = self.take_if_matches_one(vec![
             TokenType::Greater,
             TokenType::GreaterEqual,
             TokenType::Less,
@@ -328,7 +328,7 @@ impl Parser {
 
     fn term(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.factor()?;
-        while let Some(op) = self.matches_one(vec![TokenType::Minus, TokenType::Plus]) {
+        while let Some(op) = self.take_if_matches_one(vec![TokenType::Minus, TokenType::Plus]) {
             let right = Box::new(self.factor()?);
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -341,7 +341,7 @@ impl Parser {
 
     fn factor(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.unary()?;
-        while let Some(op) = self.matches_one(vec![TokenType::Slash, TokenType::Star]) {
+        while let Some(op) = self.take_if_matches_one(vec![TokenType::Slash, TokenType::Star]) {
             let right = Box::new(self.unary()?);
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -353,7 +353,7 @@ impl Parser {
     }
 
     fn unary(&mut self) -> Result<Expr, ParserError> {
-        if let Some(op) = self.matches_one(vec![TokenType::Bang, TokenType::Minus]) {
+        if let Some(op) = self.take_if_matches_one(vec![TokenType::Bang, TokenType::Minus]) {
             let right = Box::new(self.unary()?);
             return Ok(Expr::Unary { op, right });
         }
@@ -364,7 +364,7 @@ impl Parser {
     fn call(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.primary()?;
 
-        while self.take_match(TokenType::LeftParen).is_some() {
+        while self.take_if_matches(TokenType::LeftParen).is_some() {
             expr = self.finish_call(expr)?;
         }
 
@@ -379,13 +379,13 @@ impl Parser {
                     return Err(ParserError::TooManyFnArguments);
                 }
                 args.push(self.expression()?);
-                if self.take_match(TokenType::Comma).is_none() {
+                if self.take_if_matches(TokenType::Comma).is_none() {
                     break;
                 }
             }
         }
 
-        let paren = self.consume(TokenType::RightParen, "Expect ')' after arguments.")?;
+        let paren = self.must_consume(TokenType::RightParen, "Expect ')' after arguments.")?;
 
         Ok(Expr::Call {
             callee: Box::new(callee),
@@ -395,26 +395,26 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<Expr, ParserError> {
-        if self.take_match(TokenType::False).is_some() {
+        if self.take_if_matches(TokenType::False).is_some() {
             return Ok(Expr::Literal(LiteralValue::False));
         }
-        if self.take_match(TokenType::True).is_some() {
+        if self.take_if_matches(TokenType::True).is_some() {
             return Ok(Expr::Literal(LiteralValue::True));
         }
-        if self.take_match(TokenType::Nil).is_some() {
+        if self.take_if_matches(TokenType::Nil).is_some() {
             return Ok(Expr::Literal(LiteralValue::Nil));
         }
-        if let Some(tok) = self.matches_one(vec![TokenType::Number, TokenType::String]) {
+        if let Some(tok) = self.take_if_matches_one(vec![TokenType::Number, TokenType::String]) {
             return Ok(Expr::Literal(
                 tok.literal.expect("expected Number or String literal"),
             ));
         }
-        if let Some(identifier) = self.take_match(TokenType::Identifier) {
+        if let Some(identifier) = self.take_if_matches(TokenType::Identifier) {
             return Ok(Expr::Variable(identifier));
         }
-        if self.take_match(TokenType::LeftParen).is_some() {
+        if self.take_if_matches(TokenType::LeftParen).is_some() {
             let expr = self.expression()?;
-            let _ = self.consume(TokenType::RightParen, "Expect ')' after expression.")?;
+            let _ = self.must_consume(TokenType::RightParen, "Expect ')' after expression.")?;
             return Ok(Expr::Grouping {
                 expr: Box::new(expr),
             });
@@ -426,7 +426,7 @@ impl Parser {
         }
     }
 
-    fn consume(&mut self, tt: TokenType, err: &str) -> Result<Token, ParserError> {
+    fn must_consume(&mut self, tt: TokenType, err: &str) -> Result<Token, ParserError> {
         if self.next_is(tt) {
             Ok(self.tokens.next().unwrap())
         } else {
@@ -434,11 +434,11 @@ impl Parser {
         }
     }
 
-    fn take_match(&mut self, t: TokenType) -> Option<Token> {
-        self.matches_one(iter::once(t))
+    fn take_if_matches(&mut self, t: TokenType) -> Option<Token> {
+        self.take_if_matches_one(iter::once(t))
     }
 
-    fn matches_one(&mut self, types: impl IntoIterator<Item = TokenType>) -> Option<Token> {
+    fn take_if_matches_one(&mut self, types: impl IntoIterator<Item = TokenType>) -> Option<Token> {
         self.tokens
             .next_if(|t| types.into_iter().any(|tt| t.typ == tt))
     }
