@@ -5,9 +5,7 @@ use std::{
 };
 
 use crate::{
-    ast::{
-        Callable, Environment, Expr, Function, NativeFunction, Stmt, Value
-    },
+    ast::{Callable, Environment, Expr, Function, NativeFunction, Stmt, Value},
     scanner::{LiteralValue, TokenType},
 };
 use anyhow::anyhow;
@@ -20,7 +18,6 @@ pub enum ReturnValue {
 
 pub struct Interpreter {
     pub(crate) env: Rc<RefCell<Environment>>,
-    pub(crate) globals: Rc<RefCell<Environment>>,
 }
 
 impl Interpreter {
@@ -38,13 +35,10 @@ impl Interpreter {
             }),
         );
 
-        let globals = Rc::new(RefCell::new(globals));
+        let env = Environment::with_enclosing(Rc::new(RefCell::new(globals)));
 
         Interpreter {
-            env: Rc::new(RefCell::new(Environment::with_enclosing(Rc::clone(
-                &globals,
-            )))),
-            globals,
+            env: Rc::new(RefCell::new(env)),
         }
     }
 

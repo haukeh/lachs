@@ -21,7 +21,7 @@ pub enum ParserError {
 #[derive(Debug)]
 enum FunctionKind {
     Func,
-    Method,
+    _Method,
 }
 
 struct TokenIter {
