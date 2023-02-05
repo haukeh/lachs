@@ -22,7 +22,7 @@ pub enum ParserError {
 #[derive(Debug)]
 pub enum FunctionKind {
     Func,
-    _Method,
+    Method,
 }
 
 struct TokenIter {
@@ -65,6 +65,8 @@ impl Parser {
     fn declaration(&mut self) -> Result<Stmt, ParserError> {
         let res = if self.take_if_matches(TokenType::Var).is_some() {
             self.var_decl()
+        } else if self.take_if_matches(TokenType::Class).is_some() {
+            self.class_declaration()
         } else if self.take_if_matches(TokenType::Fun).is_some() {
             self.function(FunctionKind::Func)
         } else {
@@ -77,6 +79,23 @@ impl Parser {
 
         res
     }
+
+    fn class_declaration(&mut self) -> Result<Stmt, ParserError> { 
+        let name = self.must_consume(TokenType::Identifier, "Expected class name")?;
+        self.must_consume(TokenType::LeftBrace, "Expected '{' before class body")?;
+        
+        let mut methods = Vec::new();
+        while !self.next_is(TokenType::RightBrace) && !self.at_end() {
+            if let Stmt::Function(func) = self.function(FunctionKind::Method)? {
+                methods.push(func);
+            }        
+        }        
+        
+        self.must_consume(TokenType::RightBrace, "Expected '}' after class body")?;
+        
+        Ok(Stmt::Class(name, methods))
+    }
+
 
     fn function(&mut self, kind: FunctionKind) -> Result<Stmt, ParserError> {
         let name =

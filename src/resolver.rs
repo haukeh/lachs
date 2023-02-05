@@ -95,6 +95,10 @@ impl<'a, 'b> Resolver<'a, 'b> {
                 self.end_scope();
                 self.current_fn = enclosing_fn;
             }
+            Stmt::Class(name, _) => {
+                self.declare(name);
+                self.define(name);
+            },
         };
         Ok(())
     }

@@ -5,12 +5,13 @@ use std::{
     rc::Rc,
     time::{SystemTime, UNIX_EPOCH},
 };
+use core::result::Result::Ok;
 
 use crate::{
-    ast::{Callable, Environment, Expr, ExprID, Function, NativeFunction, Stmt, Value},
+    ast::{Callable, Environment, Expr, ExprID, Function, NativeFunction, Stmt, Value, Class},
     scanner::{LiteralValue, Token, TokenType},
 };
-use anyhow::anyhow;
+use anyhow::{anyhow};
 use log::debug;
 
 pub enum ReturnValue {
@@ -139,7 +140,8 @@ impl<'a> Interpreter<'a> {
                 let callee: &dyn Callable = match &callee {
                     Value::NativeFunc(f) => f,
                     Value::Func(f) => f,
-                    _ => return Err(anyhow!("Callee {:?} is not a function or class", callee)),
+                    Value::Class(c) => c,
+                    _ => return Err(anyhow!("Callee {:?} is not a function or class", callee)),                    
                 };
 
                 if args.len() != callee.arity() {
@@ -225,6 +227,13 @@ impl<'a> Interpreter<'a> {
                 let v = self.expression(expr)?;
                 Ok(ReturnValue::Value(v))
             }
+            Stmt::Class(name, _) => {
+                let mut env = self.env.borrow_mut();
+                env.define(name.lexeme.clone(), Value::Nil);
+                let class = Class::new(name.lexeme.clone());
+                env.assign(name, Value::Class(class));
+                Ok(ReturnValue::Unit)
+            },
         }
     }
 

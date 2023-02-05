@@ -5,7 +5,7 @@ use log::debug;
 use std::{
     cell::RefCell,
     collections::HashMap,
-    fmt::{Debug, Display},
+    fmt::{Debug, Display, write},
     ops::{Add, Mul, Sub},
     rc::Rc,
 };
@@ -41,6 +41,45 @@ impl Debug for Function {
                     .collect::<Vec<_>>(),
             )
             .finish()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ClassInstance {
+    class: Class,
+}
+
+impl ClassInstance {
+    pub fn new(class: Class) -> Self {
+        ClassInstance { class }
+    }
+}
+
+impl Display for ClassInstance {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} instance", self.class.name)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Class {
+    pub name: String,
+}
+
+impl Class {
+    pub fn new(name: String) -> Self {
+        Class { name }
+    }
+}
+
+impl Callable for Class {
+    fn arity(&self) -> usize {
+        0
+    }
+
+    fn call(&self, _interpreter: &mut Interpreter, _args: &[Value]) -> anyhow::Result<Value> {
+        let instance = ClassInstance::new(self.clone());
+        Ok(Value::ClassInstance(instance))
     }
 }
 
@@ -101,6 +140,8 @@ pub enum Value {
     Nil,
     NativeFunc(NativeFunction),
     Func(Function),
+    Class(Class),
+    ClassInstance(ClassInstance),
 }
 
 impl Value {
@@ -201,6 +242,8 @@ impl From<Value> for String {
             Value::Nil => "nil".to_string(),
             Value::Func(_) => todo!(),
             Value::NativeFunc(_) => todo!(),
+            Value::Class(_) => todo!(),
+            Value::ClassInstance(_) => todo!(),
         }
     }
 }
@@ -214,6 +257,8 @@ impl Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Func(_) => write!(f, "Function"),
             Value::NativeFunc(_) => write!(f, "NativeFunction"),
+            Value::Class(Class { name }) => write!(f, "{name}"),
+            Value::ClassInstance(ClassInstance { class }) => write!(f, "{} instance", class.name),
         }
     }
 }
@@ -317,6 +362,7 @@ pub enum Stmt {
     While(Expr, Box<Stmt>),
     Block(Vec<Stmt>),
     Function(FunctionDecl),
+    Class(Token, Vec<FunctionDecl>),
 }
 
 #[derive(Debug, Default)]

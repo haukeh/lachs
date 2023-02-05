@@ -85,23 +85,50 @@ fn parse(source: String) -> Result<Vec<Stmt>, Box<dyn Error>> {
 mod tests {
     use super::*;
 
+    fn assert_output(program: &str, expected: &str) {
+        let mut out = Vec::new();
+        run(program.to_string(), &mut out).unwrap();        
+        assert_eq!(String::from_utf8_lossy(&out), expected);
+    }
+
     #[test]
     fn closures_must_not_leak() {
         let prog = r###"
-var a = "global";
-{
-    fun showA() {
-        print a;
+            var a = "global";
+            {
+                fun showA() {
+                    print a;
+                }
+
+                showA();
+                var a = "block";
+                showA();
+            }
+        "###;
+        
+        assert_output(prog, "global\nglobal\n");
     }
 
-    showA();
-    var a = "block";
-    showA();
-}
-"###;
-        let mut out = Vec::new();
-        run(prog.to_string(), &mut out).unwrap();
+    #[test]
+    fn classes() {
+        let prog = r###"
+        class DevonshireCream {
+            serveOn() {
+              return "Scones";
+            }
+          }
+          
+          print DevonshireCream; // Prints "DevonshireCream".
+        "###;
 
-        assert_eq!("global\nglobal\n", String::from_utf8_lossy(&out));
+        assert_output(prog, "DevonshireCream\n");
+
+        let prog = r###"
+            class Bagel {}
+            var bagel = Bagel();
+            print bagel;
+        "###;
+
+        assert_output(prog, "Bagel instance\n");
     }
 }
