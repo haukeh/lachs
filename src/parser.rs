@@ -1,4 +1,5 @@
 use std::iter::{self, Peekable};
+use serial_int::SerialGenerator;
 use thiserror::Error;
 
 use crate::{
@@ -41,12 +42,15 @@ impl Iterator for TokenIter {
 
 pub struct Parser {
     tokens: Peekable<TokenIter>,
+    id_gen: SerialGenerator<usize>
+
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
             tokens: TokenIter { tokens }.peekable(),
+            id_gen: SerialGenerator::new()
         }
     }
 
@@ -143,7 +147,7 @@ impl Parser {
     }
 
     fn return_statement(&mut self, keyword: Token) -> Result<Stmt, ParserError> {
-        let mut value = Expr::Literal(LiteralValue::Nil);
+        let mut value = Expr::Literal(self.id_gen.generate(), LiteralValue::Nil);
 
         if !self.next_is(TokenType::Semicolon) {
             value = self.expression()?;
@@ -168,7 +172,7 @@ impl Parser {
         let cond = if self.take_if_matches(TokenType::Semicolon).is_none() {
             self.expression()?
         } else {
-            Expr::Literal(LiteralValue::True)
+            Expr::Literal(self.id_gen.generate(), LiteralValue::True)
         };
         self.must_consume(TokenType::Semicolon, "Expect ; after loop condition")?;
 
@@ -252,8 +256,9 @@ impl Parser {
         if let Some(equals) = self.take_if_matches(TokenType::Equal) {
             let value = self.assignment()?;
 
-            if let Expr::Variable(name) = &expr {
+            if let Expr::Variable(_, name) = &expr {
                 return Ok(Expr::Assign {
+                    id: self.id_gen.generate(),
                     name: name.clone(),
                     value: Box::new(value),
                 });
@@ -271,6 +276,7 @@ impl Parser {
         while let Some(op) = self.take_if_matches(TokenType::Or) {
             let right = Box::new(self.and()?);
             expr = Expr::Logical {
+                id: self.id_gen.generate(),
                 left: Box::new(expr),
                 op,
                 right,
@@ -286,6 +292,7 @@ impl Parser {
         while let Some(op) = self.take_if_matches(TokenType::And) {
             let right = Box::new(self.equality()?);
             expr = Expr::Logical {
+                id: self.id_gen.generate(),
                 left: Box::new(expr),
                 op,
                 right,
@@ -300,6 +307,7 @@ impl Parser {
         while let Some(op) = self.take_if_matches_one(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
             let right = Box::new(self.comparison()?);
             expr = Expr::Binary {
+                id: self.id_gen.generate(),
                 left: Box::new(expr),
                 op,
                 right,
@@ -318,6 +326,7 @@ impl Parser {
         ]) {
             let right = Box::new(self.term()?);
             expr = Expr::Binary {
+                id: self.id_gen.generate(),
                 left: Box::new(expr),
                 op,
                 right,
@@ -331,6 +340,7 @@ impl Parser {
         while let Some(op) = self.take_if_matches_one(vec![TokenType::Minus, TokenType::Plus]) {
             let right = Box::new(self.factor()?);
             expr = Expr::Binary {
+                id: self.id_gen.generate(),
                 left: Box::new(expr),
                 op,
                 right,
@@ -344,6 +354,7 @@ impl Parser {
         while let Some(op) = self.take_if_matches_one(vec![TokenType::Slash, TokenType::Star]) {
             let right = Box::new(self.unary()?);
             expr = Expr::Binary {
+                id: self.id_gen.generate(),
                 left: Box::new(expr),
                 op,
                 right,
@@ -355,7 +366,8 @@ impl Parser {
     fn unary(&mut self) -> Result<Expr, ParserError> {
         if let Some(op) = self.take_if_matches_one(vec![TokenType::Bang, TokenType::Minus]) {
             let right = Box::new(self.unary()?);
-            return Ok(Expr::Unary { op, right });
+            let id = self.id_gen.generate();
+            return Ok(Expr::Unary { id, op, right });
         }
 
         self.call()
@@ -388,6 +400,7 @@ impl Parser {
         let paren = self.must_consume(TokenType::RightParen, "Expect ')' after arguments.")?;
 
         Ok(Expr::Call {
+            id: self.id_gen.generate(),
             callee: Box::new(callee),
             paren,
             args,
@@ -396,26 +409,28 @@ impl Parser {
 
     fn primary(&mut self) -> Result<Expr, ParserError> {
         if self.take_if_matches(TokenType::False).is_some() {
-            return Ok(Expr::Literal(LiteralValue::False));
+            return Ok(Expr::Literal(self.id_gen.generate(), LiteralValue::False));
         }
         if self.take_if_matches(TokenType::True).is_some() {
-            return Ok(Expr::Literal(LiteralValue::True));
+            return Ok(Expr::Literal(self.id_gen.generate(), LiteralValue::True));
         }
         if self.take_if_matches(TokenType::Nil).is_some() {
-            return Ok(Expr::Literal(LiteralValue::Nil));
+            return Ok(Expr::Literal(self.id_gen.generate(), LiteralValue::Nil));
         }
         if let Some(tok) = self.take_if_matches_one(vec![TokenType::Number, TokenType::String]) {
             return Ok(Expr::Literal(
+                self.id_gen.generate(),
                 tok.literal.expect("expected Number or String literal"),
             ));
         }
         if let Some(identifier) = self.take_if_matches(TokenType::Identifier) {
-            return Ok(Expr::Variable(identifier));
+            return Ok(Expr::Variable(self.id_gen.generate(), identifier));
         }
         if self.take_if_matches(TokenType::LeftParen).is_some() {
             let expr = self.expression()?;
             let _ = self.must_consume(TokenType::RightParen, "Expect ')' after expression.")?;
             return Ok(Expr::Grouping {
+                id: self.id_gen.generate(),
                 expr: Box::new(expr),
             });
         }

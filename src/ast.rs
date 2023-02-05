@@ -1,14 +1,16 @@
-use core::fmt;
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    fmt::{Display, Write},
-    ops::{Add, Mul, Sub},
-    rc::Rc, io,
-};
-
 use anyhow::anyhow;
+use core::fmt;
 use log::debug;
+use std::hash::Hash;
+use std::ops::Deref;
+use std::{
+    cell::{RefCell, RefMut},
+    collections::HashMap,
+    fmt::{Debug, Display, Write},
+    io,
+    ops::{Add, Mul, Sub},
+    rc::Rc,
+};
 use thiserror::Error;
 
 use crate::{
@@ -21,10 +23,27 @@ pub trait Callable {
     fn call(&self, interpreter: &mut Interpreter, args: &[Value]) -> anyhow::Result<Value>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Function {
     pub declaration: FunctionDecl,
-    pub closure: Rc<RefCell<Environment>>
+    pub closure: Rc<RefCell<Environment>>,
+}
+
+impl Debug for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Function")
+            .field("name", &self.declaration.name.lexeme)
+            .field(
+                "params",
+                &self
+                    .declaration
+                    .params
+                    .iter()
+                    .map(|p| &p.lexeme)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
 }
 
 #[derive(Clone)]
@@ -58,7 +77,7 @@ impl Callable for Function {
         } = &self.declaration;
 
         let mut env = Environment::with_enclosing(Rc::clone(&self.closure));
-        
+
         for i in 0..params.len() {
             env.define(params[i].lexeme.clone(), args[i].clone());
         }
@@ -201,36 +220,82 @@ impl Display for Value {
     }
 }
 
-#[derive(Debug, Clone)]
+pub type ExprID = usize;
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Unary {
+        id: ExprID,
         op: Token,
         right: Box<Expr>,
     },
     Logical {
+        id: ExprID,
         left: Box<Expr>,
         op: Token,
         right: Box<Expr>,
     },
     Binary {
+        id: ExprID,
         left: Box<Expr>,
         op: Token,
         right: Box<Expr>,
     },
     Call {
+        id: ExprID,
         callee: Box<Expr>,
         paren: Token,
         args: Vec<Expr>,
     },
     Assign {
+        id: ExprID,
         name: Token,
         value: Box<Expr>,
     },
     Grouping {
+        id: ExprID,
         expr: Box<Expr>,
     },
-    Literal(LiteralValue),
-    Variable(Token),
+    Literal(ExprID, LiteralValue),
+    Variable(ExprID, Token),
+}
+
+impl Expr {
+    pub fn id(&self) -> ExprID {
+        match self {
+            Expr::Unary {
+                id,
+                op: _,
+                right: _,
+            } => *id,
+            Expr::Logical {
+                id,
+                left: _,
+                op: _,
+                right: _,
+            } => *id,
+            Expr::Binary {
+                id,
+                left: _,
+                op: _,
+                right: _,
+            } => *id,
+            Expr::Call {
+                id,
+                callee: _,
+                paren: _,
+                args: _,
+            } => *id,
+            Expr::Assign {
+                id,
+                name: _,
+                value: _,
+            } => *id,
+            Expr::Grouping { id, expr: _ } => *id,
+            Expr::Literal(id, _) => *id,
+            Expr::Variable(id, _) => *id,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -290,6 +355,23 @@ impl Environment {
         }
     }
 
+    pub fn assign_at(&mut self, distance: usize, name: &Token, value: Value) {
+        if distance == 0 {
+            self.values.insert(name.lexeme.clone(), value);
+            return;
+        }
+
+        let mut next_env = self.enclosing.clone().unwrap();
+        for _ in 1..distance {
+            let tmp = &(next_env.borrow().enclosing.clone().unwrap());
+            next_env = Rc::clone(tmp);
+        }
+
+        let mut env = next_env.borrow_mut();
+
+        env.values.insert(name.lexeme.clone(), value);
+    }
+
     pub fn get(&self, name: &str) -> Value {
         debug!("looking for {} in {:?}", name, self.values);
 
@@ -304,6 +386,29 @@ impl Environment {
         }
 
         panic!("Undefined variable {}", name);
+    }
+
+    pub fn get_at(&self, distance: usize, name: &str) -> Value {
+        debug!("Values at distance 0: {:?}", self.values);
+        if distance == 0 {
+            return self
+                .values
+                .get(name)
+                .expect("Variable not found at expected depth")
+                .clone();
+        }
+
+        let mut next_env = self.enclosing.clone().unwrap();
+        for _ in 1..distance {
+            let tmp = &(next_env.borrow().enclosing.clone().unwrap());
+            next_env = Rc::clone(tmp);
+        }
+
+        let env = next_env.borrow();
+
+        debug!("Values at distance {}: {:?}", distance, env.values);
+
+        env.values.get(name).unwrap().clone()
     }
 }
 

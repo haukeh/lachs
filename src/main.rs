@@ -1,13 +1,8 @@
-use std::{
-    env,
-    error::Error,
-    fs,
-    io::{self, Stdout},
-    process::exit,
-};
+use std::{env, error::Error, fs, io::{self, Write}, process::exit};
 
 use ast::Stmt;
 use interpreter::Interpreter;
+use resolver::Resolver;
 use scanner::Scanner;
 
 use crate::parser::Parser;
@@ -15,7 +10,9 @@ use crate::parser::Parser;
 mod ast;
 mod interpreter;
 mod parser;
+mod resolver;
 mod scanner;
+
 fn main() {
     env_logger::init();
 
@@ -39,12 +36,9 @@ fn main() {
 }
 
 fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
-    let source = fs::read_to_string(path)?;
-    let stmts = parse(source)?;
     let mut stdout = io::stdout().lock();
-    let mut interpreter = Interpreter::new(&mut stdout);
-    interpreter.interpret(&stmts)?;
-    Ok(())
+    let source = fs::read_to_string(path)?;    
+    run(source, &mut stdout)
 }
 
 fn run_prompt() {
@@ -65,6 +59,17 @@ fn run_prompt() {
     }
 }
 
+fn run(source: String, out: &mut dyn Write) -> Result<(), Box<dyn Error>> {
+    let stmts = parse(source)?;
+    let mut interpreter = Interpreter::new(out);
+    let mut resolver = Resolver::new(&mut interpreter);
+    resolver.resolve_stmts(&stmts);
+    
+    interpreter.interpret(&stmts)?;
+    
+    Ok(())
+}
+
 fn parse(source: String) -> Result<Vec<Stmt>, Box<dyn Error>> {
     let scanner = Scanner::new(source);
     let tokens = scanner.scan_tokens()?;
@@ -82,7 +87,7 @@ mod tests {
 var a = "global";
 {
     fun showA() {
-    print a;
+        print a;
     }
 
     showA();
@@ -91,12 +96,8 @@ var a = "global";
 }
 "###;
         let mut out = Vec::new();
-        let mut interpreter = Interpreter::new(&mut out);
-        let stmts = parse(prog.to_string()).unwrap();
-        interpreter.interpret(&stmts).unwrap();
-
-        let s = String::from_utf8_lossy(&out);
-    
-        assert_ne!("global\nblock\n", s);
+        run(prog.to_string(), &mut out).unwrap();        
+        
+        assert_eq!("global\nglobal\n", String::from_utf8_lossy(&out));
     }
 }

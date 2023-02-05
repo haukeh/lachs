@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use log::error;
 use phf::phf_map;
 use thiserror::Error;
 
@@ -74,7 +75,7 @@ impl Display for LiteralValue {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub typ: TokenType,
     pub lexeme: String,
@@ -151,7 +152,7 @@ impl Scanner {
         while !self.is_at_end() {
             self.start = self.current;
             if let Err(e) = self.scan_token() {
-                println!("{e}");
+                error!("{e}");
                 had_error = true;
             }
         }

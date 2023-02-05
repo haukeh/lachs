@@ -1,13 +1,15 @@
 use std::{
+    any::Any,
     cell::RefCell,
+    collections::HashMap,
+    io::Write,
     rc::Rc,
     time::{SystemTime, UNIX_EPOCH},
-    io::{Write, self},
 };
 
 use crate::{
-    ast::{Callable, Environment, Expr, Function, NativeFunction, Stmt, Value},
-    scanner::{LiteralValue, TokenType},
+    ast::{Callable, Environment, Expr, ExprID, Function, NativeFunction, Stmt, Value},
+    scanner::{LiteralValue, Token, TokenType},
 };
 use anyhow::anyhow;
 use log::debug;
@@ -19,10 +21,12 @@ pub enum ReturnValue {
 
 pub struct Interpreter<'a> {
     pub(crate) env: Rc<RefCell<Environment>>,
+    globals: Rc<RefCell<Environment>>,
+    locals: HashMap<ExprID, usize>,
     out: &'a mut dyn Write,
 }
 
-impl <'a> Interpreter<'a> {
+impl<'a> Interpreter<'a> {
     pub fn new(out: &'a mut dyn Write) -> Self {
         let mut globals = Environment::new();
         globals.define(
@@ -37,12 +41,19 @@ impl <'a> Interpreter<'a> {
             }),
         );
 
-        let env = Environment::with_enclosing(Rc::new(RefCell::new(globals)));
+        let globals = Rc::new(RefCell::new(globals));
+        let env = Rc::clone(&globals);
 
         Interpreter {
-            env: Rc::new(RefCell::new(env)),
-            out: out,
+            globals,
+            env,
+            locals: HashMap::new(),
+            out,
         }
+    }
+
+    pub fn resolve(&mut self, expr: &Expr, depth: usize) {
+        self.locals.insert(expr.id(), depth);
     }
 
     pub fn interpret(&mut self, program: &Vec<Stmt>) -> anyhow::Result<ReturnValue> {
@@ -53,16 +64,27 @@ impl <'a> Interpreter<'a> {
         Ok(ReturnValue::Unit)
     }
 
+    fn lookup_variable(&self, name: &Token, expr: &Expr) -> Value {
+        match self.locals.get(&expr.id()) {
+            Some(distance) => {            
+                self.env.borrow().get_at(*distance, &name.lexeme)
+            }
+            None => {             
+                self.globals.borrow().get(&name.lexeme)
+            }
+        }
+    }
+
     fn expression(&mut self, expr: &Expr) -> anyhow::Result<Value> {
         match expr {
-            Expr::Literal(lit) => match lit {
+            Expr::Literal(_, lit) => match lit {
                 LiteralValue::Number(n) => Ok(Value::Number(*n)),
                 LiteralValue::String(s) => Ok(Value::String(s.clone())),
                 LiteralValue::True => Ok(Value::Bool(true)),
                 LiteralValue::False => Ok(Value::Bool(false)),
                 LiteralValue::Nil => Ok(Value::Nil),
             },
-            Expr::Unary { op, right } => {
+            Expr::Unary { id: _, op, right } => {
                 let right = self.expression(right)?;
                 match op.typ {
                     TokenType::Bang => Ok(Value::Bool(!right.is_truthy())),
@@ -75,23 +97,35 @@ impl <'a> Interpreter<'a> {
                     _ => Err(anyhow!("wrong token type")),
                 }
             }
-            Expr::Binary { left, op, right } => {
+            Expr::Binary {
+                id: _,
+                left,
+                op,
+                right,
+            } => {
                 let lhs = self.expression(left)?;
                 let rhs = self.expression(right)?;
                 binay_operation(op.typ, lhs, rhs)
             }
-            Expr::Grouping { expr } => self.expression(expr),
-            Expr::Variable(var) => {
-                let value = (*self.env).borrow().get(&var.lexeme);
-                Ok(value)
-            }
-            Expr::Assign { name, value } => {
+            Expr::Grouping { id: _, expr } => self.expression(expr),
+            Expr::Variable(_, name) => Ok(self.lookup_variable(name, expr)),
+            Expr::Assign { id: _, name, value } => {
                 let value = self.expression(value)?;
-                let mut env = (*self.env).borrow_mut();
-                env.assign(name, value.clone());
+                if let Some(distance) = self.locals.get(&expr.id()) {
+                    self.env
+                        .borrow_mut()
+                        .assign_at(*distance, name, value.clone());
+                } else {
+                    self.globals.borrow_mut().assign(name, value.clone());
+                }
                 Ok(value)
             }
-            Expr::Logical { left, op, right } => {
+            Expr::Logical {
+                id: _,
+                left,
+                op,
+                right,
+            } => {
                 let left = self.expression(left)?;
                 match op.typ {
                     TokenType::Or if left.is_truthy() => Ok(left),
@@ -100,6 +134,7 @@ impl <'a> Interpreter<'a> {
                 }
             }
             Expr::Call {
+                id: _,
                 callee,
                 paren: _,
                 args,
@@ -138,7 +173,7 @@ impl <'a> Interpreter<'a> {
             }
             Stmt::Print(expr) => {
                 let value = self.expression(expr)?;
-                writeln!(&mut self.out, "{}", value);
+                writeln!(&mut self.out, "{}", value)?;
                 Ok(ReturnValue::Unit)
             }
             Stmt::Var(name, initializer) => {
