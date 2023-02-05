@@ -20,7 +20,7 @@ pub enum ParserError {
 }
 
 #[derive(Debug)]
-enum FunctionKind {
+pub enum FunctionKind {
     Func,
     _Method,
 }

@@ -69,10 +69,8 @@ fn run(source: String, out: &mut dyn Write) -> Result<(), Box<dyn Error>> {
     let stmts = parse(source)?;
     let mut interpreter = Interpreter::new(out);
     let mut resolver = Resolver::new(&mut interpreter);
-    resolver.resolve_stmts(&stmts);
-
+    resolver.resolve_stmts(&stmts)?;
     interpreter.interpret(&stmts)?;
-
     Ok(())
 }
 
