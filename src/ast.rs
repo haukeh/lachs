@@ -1,13 +1,11 @@
 use anyhow::anyhow;
 use core::fmt;
 use log::debug;
-use std::hash::Hash;
-use std::ops::Deref;
+
 use std::{
-    cell::{RefCell, RefMut},
+    cell::RefCell,
     collections::HashMap,
-    fmt::{Debug, Display, Write},
-    io,
+    fmt::{Debug, Display},
     ops::{Add, Mul, Sub},
     rc::Rc,
 };

@@ -1,5 +1,4 @@
 use std::{
-    any::Any,
     cell::RefCell,
     collections::HashMap,
     io::Write,
@@ -66,12 +65,8 @@ impl<'a> Interpreter<'a> {
 
     fn lookup_variable(&self, name: &Token, expr: &Expr) -> Value {
         match self.locals.get(&expr.id()) {
-            Some(distance) => {            
-                self.env.borrow().get_at(*distance, &name.lexeme)
-            }
-            None => {             
-                self.globals.borrow().get(&name.lexeme)
-            }
+            Some(distance) => self.env.borrow().get_at(*distance, &name.lexeme),
+            None => self.globals.borrow().get(&name.lexeme),
         }
     }
 

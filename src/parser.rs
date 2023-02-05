@@ -1,5 +1,5 @@
-use std::iter::{self, Peekable};
 use serial_int::SerialGenerator;
+use std::iter::{self, Peekable};
 use thiserror::Error;
 
 use crate::{
@@ -42,15 +42,14 @@ impl Iterator for TokenIter {
 
 pub struct Parser {
     tokens: Peekable<TokenIter>,
-    id_gen: SerialGenerator<usize>
-
+    id_gen: SerialGenerator<usize>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
             tokens: TokenIter { tokens }.peekable(),
-            id_gen: SerialGenerator::new()
+            id_gen: SerialGenerator::new(),
         }
     }
 
@@ -71,16 +70,17 @@ impl Parser {
         } else {
             self.statement()
         };
-        
+
         if res.is_err() {
             self.synchronize();
         }
-        
-        res        
+
+        res
     }
 
     fn function(&mut self, kind: FunctionKind) -> Result<Stmt, ParserError> {
-        let name = self.must_consume(TokenType::Identifier, &format!("Expected {:?} name.", kind))?;
+        let name =
+            self.must_consume(TokenType::Identifier, &format!("Expected {:?} name.", kind))?;
         self.must_consume(
             TokenType::LeftParen,
             &format!("Expected '(' after {:?} name.", kind),
@@ -304,7 +304,9 @@ impl Parser {
 
     fn equality(&mut self) -> Result<Expr, ParserError> {
         let mut expr = self.comparison()?;
-        while let Some(op) = self.take_if_matches_one(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
+        while let Some(op) =
+            self.take_if_matches_one(vec![TokenType::BangEqual, TokenType::EqualEqual])
+        {
             let right = Box::new(self.comparison()?);
             expr = Expr::Binary {
                 id: self.id_gen.generate(),

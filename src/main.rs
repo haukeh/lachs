@@ -1,4 +1,10 @@
-use std::{env, error::Error, fs, io::{self, Write}, process::exit};
+use std::{
+    env,
+    error::Error,
+    fs,
+    io::{self, Write},
+    process::exit,
+};
 
 use ast::Stmt;
 use interpreter::Interpreter;
@@ -37,7 +43,7 @@ fn main() {
 
 fn run_file(path: &str) -> Result<(), Box<dyn Error>> {
     let mut stdout = io::stdout().lock();
-    let source = fs::read_to_string(path)?;    
+    let source = fs::read_to_string(path)?;
     run(source, &mut stdout)
 }
 
@@ -64,9 +70,9 @@ fn run(source: String, out: &mut dyn Write) -> Result<(), Box<dyn Error>> {
     let mut interpreter = Interpreter::new(out);
     let mut resolver = Resolver::new(&mut interpreter);
     resolver.resolve_stmts(&stmts);
-    
+
     interpreter.interpret(&stmts)?;
-    
+
     Ok(())
 }
 
@@ -96,8 +102,8 @@ var a = "global";
 }
 "###;
         let mut out = Vec::new();
-        run(prog.to_string(), &mut out).unwrap();        
-        
+        run(prog.to_string(), &mut out).unwrap();
+
         assert_eq!("global\nglobal\n", String::from_utf8_lossy(&out));
     }
 }
